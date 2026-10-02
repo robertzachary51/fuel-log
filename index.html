@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Fuel Log">
+<meta name="theme-color" content="#1F3A4A">
+<title>Fuel Log</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🥗</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#EDF1EF; --surface:#FFFFFF; --ink:#1C2B33; --muted:#5B6B73; --line:#D3DBD8; --track:#E1E7E4;
+  --head:#1F3A4A; --head-ink:#F2F6F5; --accent:#1F3A4A;
+  --kcal:#1F3A4A; --protein:#2C7A8C; --fat:#B9821A; --carb:#5D8A33; --fiber:#8C6A4C; --water:#2D77B6; --supp:#7A5C9E; --over:#B4452E;
+  --num:'Barlow Condensed', 'Arial Narrow', system-ui, sans-serif;
+  --body:'Barlow', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  color-scheme:light;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#121A1F; --surface:#1A242A; --ink:#E3EAEC; --muted:#94A4AB; --line:#2B3940; --track:#26333A;
+    --head:#0E1A21; --head-ink:#E3EAEC; --accent:#9CC6D8;
+    --kcal:#9CC6D8; --protein:#5FB3C6; --fat:#E0AE47; --carb:#8DBB5E; --fiber:#C29B78; --water:#63A9E3; --supp:#B597DA; --over:#E07A61;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#121A1F; --surface:#1A242A; --ink:#E3EAEC; --muted:#94A4AB; --line:#2B3940; --track:#26333A;
+  --head:#0E1A21; --head-ink:#E3EAEC; --accent:#9CC6D8;
+  --kcal:#9CC6D8; --protein:#5FB3C6; --fat:#E0AE47; --carb:#8DBB5E; --fiber:#C29B78; --water:#63A9E3; --supp:#B597DA; --over:#E07A61;
+  color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:border-box}
+html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;min-height:100%;background:var(--bg);color:var(--ink);font:16px/1.45 var(--body);-webkit-text-size-adjust:100%;padding-bottom:calc(76px + env(safe-area-inset-bottom,0px))}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:10;background:var(--head);color:var(--head-ink);display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px}
+.brand{font:700 22px/1 var(--num);letter-spacing:.01em}
+.datenav{display:flex;align-items:center;gap:4px}
+.datenav button{background:transparent;border:0;color:inherit;font:600 20px/1 var(--num);width:36px;height:36px;border-radius:8px;cursor:pointer}
+.datenav button:hover{background:rgba(255,255,255,.1)}
+.datenav .dlabel{font:600 18px/1 var(--num);min-width:104px;text-align:center;background:transparent;border:0;cursor:pointer;color:inherit}
+
+main{max-width:680px;margin:0 auto;padding:16px}
+h2{font:600 22px/1.15 var(--num);margin:0 0 12px}
+h3{font:600 17px/1.2 var(--num);margin:0 0 8px;color:var(--muted)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;margin-bottom:14px}
+.hint{color:var(--muted);font-size:14px;margin:4px 0 10px}
+.empty{color:var(--muted);font-size:15px;padding:6px 0}
+
+/* fuel gauge hero */
+.tank{background:var(--head);color:var(--head-ink);border-radius:14px;padding:18px 18px 14px;margin-bottom:14px}
+.tank-top{display:flex;justify-content:space-between;align-items:flex-end;gap:12px}
+.big{font:700 52px/0.95 var(--num);letter-spacing:-.01em}
+.mid{font:600 30px/1 var(--num)}
+.sub{font-size:14px;opacity:.75;margin-top:4px}
+.right{text-align:right}
+.gauge{position:relative;height:18px;border-radius:9px;background:rgba(255,255,255,.14);margin-top:16px;overflow:hidden}
+.gfill{position:absolute;inset:0 auto 0 0;background:#E9B949;border-radius:9px;transition:width .4s ease}
+.gfill.over{background:#E07A61}
+.tick{position:absolute;top:0;bottom:0;width:2px;background:rgba(0,0,0,.25)}
+.gscale{display:flex;justify-content:space-between;font:600 14px/1 var(--num);opacity:.7;margin-top:6px}
+
+.row{margin:12px 0}
+.row:first-child{margin-top:0}
+.rowtop{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:5px}
+.rowtop .lbl{font-weight:600}
+.rowtop .val{font:600 18px/1 var(--num)}
+.rowtop .val small{font:500 14px/1 var(--body);color:var(--muted)}
+.track{height:9px;border-radius:5px;background:var(--track);overflow:hidden}
+.fill{height:100%;border-radius:5px;transition:width .4s ease}
+.micros{display:grid;grid-template-columns:1fr 1fr;gap:4px 18px}
+.micros .row{margin:8px 0}
+.micros .rowtop .lbl{font-weight:500;font-size:14px}
+.micros .rowtop .val{font-size:15px}
+.micros .track{height:6px}
+
+/* checklist */
+.doses{display:flex;flex-direction:column;gap:8px}
+.dose{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:transparent;border:1px solid var(--line);border-radius:10px;padding:10px 12px;cursor:pointer}
+.dose .box{flex:0 0 24px;height:24px;border-radius:6px;border:2px solid var(--supp);display:grid;place-items:center;color:#fff;font-weight:700;font-size:15px}
+.dose.on .box{background:var(--supp)}
+.dose.on .dname{text-decoration:line-through;color:var(--muted)}
+.dname{font-weight:600}
+.dmeta{font-size:13px;color:var(--muted)}
+
+/* forms */
+.fld{display:flex;flex-direction:column;gap:4px;margin-bottom:12px;font-size:14px;font-weight:600}
+.fld > span{font-weight:600}
+input[type=text],input[type=number],input[type=search],select{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px;font-size:16px;font-weight:400}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0 10px}
+.btn{background:var(--accent);color:var(--surface);border:0;border-radius:9px;padding:11px 16px;font-weight:600;cursor:pointer}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.btn.danger{background:transparent;color:var(--over);border:1px solid var(--over)}
+.btn.wide{width:100%}
+.btns{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+.icon{background:transparent;border:0;color:var(--muted);font-size:22px;line-height:1;width:36px;height:36px;border-radius:8px;cursor:pointer;flex:0 0 36px}
+.icon:hover{background:var(--track);color:var(--over)}
+.seg{display:flex;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:3px;gap:3px;margin-bottom:12px}
+.seg button{flex:1;border:0;background:transparent;padding:8px 4px;border-radius:7px;font-weight:600;font-size:14px;cursor:pointer;color:var(--muted)}
+.seg button.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.12)}
+.searchbar{display:flex;gap:8px}
+.searchbar input{flex:1}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{position:relative}
+.chip input{position:absolute;opacity:0;inset:0;margin:0;cursor:pointer}
+.chip span{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:6px 12px;font-weight:500;font-size:14px}
+.chip input:checked + span{background:var(--supp);border-color:var(--supp);color:#fff}
+.chip input:focus-visible + span{outline:2px solid var(--accent);outline-offset:2px}
+.nutrow{display:grid;grid-template-columns:1fr 90px 74px 36px;gap:6px;align-items:center;margin-bottom:6px}
+.nutrow select,.nutrow input{padding:8px}
+
+/* lists */
+.list{list-style:none;margin:0;padding:0}
+.list li{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+.list li:first-child{border-top:0}
+.list .main{flex:1;min-width:0}
+.list .t{font-weight:600;overflow:hidden;text-overflow:ellipsis}
+.list .m{font-size:13px;color:var(--muted)}
+.list .k{font:600 17px/1 var(--num);white-space:nowrap}
+.pick{flex:1;min-width:0;text-align:left;background:transparent;border:0;padding:0;cursor:pointer}
+.mealhead{display:flex;justify-content:space-between;align-items:baseline;margin:14px 0 2px}
+.mealhead:first-of-type{margin-top:0}
+.mealhead h3{margin:0}
+.mealhead span{font:600 15px/1 var(--num);color:var(--muted)}
+.macros-line{font-size:13px;color:var(--muted)}
+.macros-line b{font-weight:600;color:var(--ink)}
+.preview{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0;text-align:center}
+.preview div{background:var(--bg);border-radius:8px;padding:8px 4px}
+.preview .pv{font:700 22px/1 var(--num)}
+.preview .pl{font-size:12px;color:var(--muted);margin-top:3px}
+.err{color:var(--over);font-size:14px;margin:10px 0 0}
+.waterbig{display:flex;align-items:baseline;gap:8px}
+.quick{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:14px 0}
+.quick button{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px 4px;font:600 19px/1 var(--num);color:var(--water);cursor:pointer}
+.calcout{background:var(--bg);border-radius:10px;padding:12px;margin:6px 0 12px;font-size:14px}
+.calcout b{font:600 17px/1 var(--num)}
+footer.ver{text-align:center;color:var(--muted);font-size:13px;padding:8px 0 16px}
+.toast{position:fixed;left:50%;bottom:calc(88px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--surface);padding:10px 16px;border-radius:10px;font-size:14px;z-index:30;max-width:90vw}
+
+nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--surface);border-top:1px solid var(--line);display:flex;padding-bottom:env(safe-area-inset-bottom,0px)}
+nav.tabs button{flex:1;background:transparent;border:0;padding:10px 2px 12px;font:600 15px/1 var(--num);color:var(--muted);cursor:pointer;position:relative}
+nav.tabs button svg{display:block;margin:0 auto 4px;width:22px;height:22px}
+nav.tabs button.on{color:var(--accent)}
+nav.tabs button.on::before{content:"";position:absolute;top:0;left:22%;right:22%;height:3px;border-radius:0 0 3px 3px;background:var(--accent)}
+@media (max-width:380px){.micros{grid-template-columns:1fr}.big{font-size:44px}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">Fuel Log</div>
+  <div class="datenav">
+    <button data-action="prevDay" aria-label="Previous day">‹</button>
+    <button class="dlabel" data-action="today" id="dlabel" aria-label="Jump to today"></button>
+    <button data-action="nextDay" aria-label="Next day">›</button>
+  </div>
+</header>
+<main id="main"></main>
+<nav class="tabs" id="tabs"></nav>
+<input type="file" id="importFile" accept="application/json,.json" hidden>
+
+<script>
+const VERSION = 'v1.0';
+const STORE = 'fuelLog.v1';
+
+const NUTR = [
+  {k:'kcal',      label:'Calories',          unit:'kcal'},
+  {k:'protein',   label:'Protein',           unit:'g',   num:['203']},
+  {k:'fat',       label:'Fat',               unit:'g',   num:['204']},
+  {k:'carbs',     label:'Carbs (total)',     unit:'g',   num:['205','205.2']},
+  {k:'fiber',     label:'Fiber',             unit:'g',   num:['291']},
+  {k:'sodium',    label:'Sodium',            unit:'mg',  num:['307']},
+  {k:'potassium', label:'Potassium',         unit:'mg',  num:['306']},
+  {k:'magnesium', label:'Magnesium',         unit:'mg',  num:['304']},
+  {k:'calcium',   label:'Calcium',           unit:'mg',  num:['301']},
+  {k:'iron',      label:'Iron',              unit:'mg',  num:['303']},
+  {k:'zinc',      label:'Zinc',              unit:'mg',  num:['309']},
+  {k:'vitd',      label:'Vitamin D',         unit:'mcg', num:['328']},
+  {k:'vitc',      label:'Vitamin C',         unit:'mg',  num:['401']},
+  {k:'b12',       label:'Vitamin B12',       unit:'mcg', num:['418']},
+  {k:'folate',    label:'Folate (DFE)',      unit:'mcg', num:['435','417']},
+  {k:'vita',      label:'Vitamin A (RAE)',   unit:'mcg', num:['320']},
+  {k:'vitk',      label:'Vitamin K',         unit:'mcg', num:['430']},
+  {k:'omega3',    label:'Omega-3 (EPA+DHA)', unit:'mg'}
+];
+const NMAP = Object.fromEntries(NUTR.map(n => [n.k, n]));
+const MICRO_KEYS = ['sodium','potassium','magnesium','calcium','iron','zinc','vitd','vitc','b12','folate','vita','vitk','omega3'];
+const MEALS = ['Breakfast','Lunch','Dinner','Snacks'];
+const TIMES = ['Morning','Midday','Evening','Bedtime'];
+const DOW = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+
+/* ---------- helpers ---------- */
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+const r0 = v => Math.round(v || 0);
+const r1 = v => Math.round((v || 0) * 10) / 10;
+const fmtN = (v, unit) => (Math.abs(v) < 10 && unit !== 'kcal') ? r1(v) : r0(v).toLocaleString();
+const dkey = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const parseKey = k => { const [y,m,d] = k.split('-').map(Number); return new Date(y, m-1, d); };
+const zero = () => Object.fromEntries(NUTR.map(n => [n.k, 0]));
+const titleCase = s => String(s || '').toLowerCase().replace(/(^|[\s,(/-])([a-z])/g, (m, a, b) => a + b.toUpperCase());
+
+function defaults(){
+  return {
+    settings:{
+      apiKey:'DEMO_KEY', waterGoal:100, carbMode:'net', theme:'auto',
+      profile:{sex:'M', age:39, ft:5, inch:10, lb:180, activity:1.55, goal:0, style:'keto', ppl:1.0},
+      targets:{kcal:2200, protein:180, fat:150, carbs:30, fiber:30},
+      micros:{sodium:3000, potassium:3400, magnesium:420, calcium:1000, iron:8, zinc:11, vitd:15, vitc:90, b12:2.4, folate:400, vita:900, vitk:120, omega3:500}
+    },
+    library:{}, supplements:[], days:{}
+  };
+}
+function load(){
+  const d = defaults();
+  try{
+    const raw = localStorage.getItem(STORE);
+    if(!raw) return d;
+    const s = JSON.parse(raw);
+    return {
+      settings:{...d.settings, ...(s.settings||{}),
+        profile:{...d.settings.profile, ...((s.settings||{}).profile||{})},
+        targets:{...d.settings.targets, ...((s.settings||{}).targets||{})},
+        micros:{...d.settings.micros, ...((s.settings||{}).micros||{})}},
+      library:s.library||{}, supplements:s.supplements||[], days:s.days||{}
+    };
+  }catch(e){ return d; }
+}
+let S = load();
+function save(){
+  try{ localStorage.setItem(STORE, JSON.stringify(S)); }
+  catch(e){ toast('Could not save. Phone storage may be full or blocked.'); }
+}
+function day(k){ return S.days[k] || (S.days[k] = {food:[], water:[], supps:{}}); }
+function autoMeal(){ const h = new Date().getHours(); return h < 11 ? 'Breakfast' : h < 15 ? 'Lunch' : h < 20 ? 'Dinner' : 'Snacks'; }
+
+const ui = {tab:'dash', date:dkey(new Date()), q:'', filter:'whole', results:[], searching:false, err:'', sel:null, meal:autoMeal(), custom:false, editSupp:null};
+
+function applyTheme(){
+  const t = S.settings.theme;
+  if(t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t);
+  else document.documentElement.removeAttribute('data-theme');
+}
+
+let toastTimer;
+function toast(msg){
+  let el = $('.toast');
+  if(!el){ el = document.createElement('div'); el.className = 'toast'; el.setAttribute('role','status'); document.body.appendChild(el); }
+  el.textContent = msg;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.remove(), 2600);
+}
+
+/* ---------- math ---------- */
+function totals(k){
+  const t = zero(); t.water = 0;
+  const d = S.days[k]; if(!d) return t;
+  (d.food||[]).forEach(f => NUTR.forEach(n => t[n.k] += (f.n && f.n[n.k]) || 0));
+  S.supplements.forEach(s => (s.times||[]).forEach(time => {
+    if(d.supps && d.supps[s.id + '|' + time]) Object.entries(s.nutrients||{}).forEach(([nk, v]) => { if(nk in t) t[nk] += v; });
+  }));
+  t.water = (d.water||[]).reduce((a, w) => a + w.oz, 0);
+  return t;
+}
+function carbShown(t){ return S.settings.carbMode === 'net' ? Math.max(0, t.carbs - t.fiber) : t.carbs; }
+function scheduled(k){
+  const dow = parseKey(k).getDay();
+  const out = [];
+  S.supplements.filter(s => s.active !== false && (s.days||[]).includes(dow))
+    .forEach(s => TIMES.forEach(time => { if((s.times||[]).includes(time)) out.push({s, time}); }));
+  return out;
+}
+function calc(){
+  const p = S.settings.profile;
+  const kg = p.lb * 0.453592, cm = ((+p.ft) * 12 + (+p.inch)) * 2.54;
+  const bmr = 10*kg + 6.25*cm - 5*p.age + (p.sex === 'M' ? 5 : -161);
+  const tdee = bmr * p.activity;
+  const kcal = Math.round(tdee * (1 + (+p.goal)) / 10) * 10;
+  const protein = Math.round(p.lb * p.ppl);
+  let carbs, mode = 'total', fiber = 35;
+  if(p.style === 'keto'){ carbs = 25; mode = 'net'; fiber = 25; }
+  else if(p.style === 'low'){ carbs = 75; mode = 'net'; fiber = 30; }
+  else if(p.style === 'bal'){ carbs = Math.round(kcal * 0.40 / 4); }
+  else { carbs = Math.round(kcal * 0.50 / 4); }
+  const fat = Math.max(40, Math.round((kcal - protein*4 - carbs*4) / 9));
+  return {bmr:Math.round(bmr), tdee:Math.round(tdee), kcal, protein, fat, carbs, fiber, mode};
+}
+
+/* ---------- USDA food database ---------- */
+function parseFood(f){
+  const by = {};
+  (f.foodNutrients||[]).forEach(n => {
+    if(n.value == null) return;
+    const num = String(n.nutrientNumber || '');
+    (by[num] || (by[num] = [])).push(n);
+  });
+  const get = (nums, unit) => {
+    for(const num of nums){
+      const arr = by[num]; if(!arr) continue;
+      const m = unit ? arr.find(x => String(x.unitName||'').toUpperCase() === unit) : arr[0];
+      if(m) return Number(m.value) || 0;
+    }
+    return null;
+  };
+  const p = zero();
+  NUTR.forEach(d => { if(d.num){ const v = get(d.num); p[d.k] = v == null ? 0 : v; } });
+  if(!p.vitd){ const iu = get(['324']); if(iu) p.vitd = iu / 40; }
+  let kcal = get(['208'], 'KCAL'); if(kcal == null) kcal = get(['958'], 'KCAL'); if(kcal == null) kcal = get(['957'], 'KCAL');
+  p.kcal = kcal == null ? (4*p.protein + 4*p.carbs + 9*p.fat) : kcal;
+  p.omega3 = ((get(['629'])||0) + (get(['621'])||0)) * 1000;
+
+  const units = [{label:'grams', g:1}, {label:'ounces', g:28.3495}];
+  const su = String(f.servingSizeUnit||'').toLowerCase();
+  if(f.servingSize && /^(g|grm|ml|mlt)$/.test(su)){
+    const u = su.startsWith('m') ? 'ml' : 'g';
+    units.push({label:`serving${f.householdServingFullText ? ' · ' + f.householdServingFullText : ''} (${r1(f.servingSize)} ${u})`, g:Number(f.servingSize), serving:true});
+  }
+  (f.foodMeasures||[]).slice(0, 8).forEach(m => {
+    if(m.gramWeight && m.disseminationText && !/not specified/i.test(m.disseminationText))
+      units.push({label:`${m.disseminationText} (${r1(m.gramWeight)} g)`, g:Number(m.gramWeight), serving:true});
+  });
+  const typeLabel = {'Foundation':'USDA whole food','SR Legacy':'USDA whole food','Survey (FNDDS)':'USDA common food','Branded':'Branded'}[f.dataType] || f.dataType;
+  return {id:'fdc' + f.fdcId, name:titleCase(f.description), brand:titleCase(f.brandName || f.brandOwner || ''), type:typeLabel, per100:p, units};
+}
+async function doSearch(){
+  const q = ui.q.trim(); if(!q) return;
+  ui.searching = true; ui.err = ''; ui.sel = null; ui.results = []; render();
+  const types = ui.filter === 'branded' ? ['Branded'] : ['Foundation','SR Legacy','Survey (FNDDS)'];
+  try{
+    const res = await fetch(`https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${encodeURIComponent(S.settings.apiKey || 'DEMO_KEY')}`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({query:q, dataType:types, pageSize:25})
+    });
+    if(res.status === 429) throw new Error('Search limit reached for this API key. Add your own free USDA key in Settings, or try again in an hour.');
+    if(res.status === 401 || res.status === 403) throw new Error('The USDA API key was rejected. Check it in Settings.');
+    if(!res.ok) throw new Error(`The food database returned an error (${res.status}). Try again.`);
+    const data = await res.json();
+    ui.results = (data.foods||[]).map(parseFood);
+    if(!ui.results.length) ui.err = 'No matches. Try fewer words, switch between whole foods and branded, or add a custom food.';
+  }catch(e){
+    ui.err = e instanceof TypeError ? 'Could not reach the food database. Check your connection.' : e.message;
+  }
+  ui.searching = false; render();
+}
+function scaled(food, grams){
+  const out = {}; const f = grams / 100;
+  NUTR.forEach(n => out[n.k] = (food.per100[n.k] || 0) * f);
+  return out;
+}
+
+/* ---------- small renderers ---------- */
+function bar(label, val, target, unit, color, limit){
+  const pct = target > 0 ? val / target * 100 : 0;
+  const over = limit && pct > 100;
+  return `<div class="row"><div class="rowtop"><span class="lbl">${label}</span><span class="val">${fmtN(val, unit)} <small>/ ${fmtN(target, unit)} ${unit}</small></span></div>
+  <div class="track" role="progressbar" aria-label="${esc(label)}" aria-valuenow="${r0(pct)}" aria-valuemin="0" aria-valuemax="100"><div class="fill" style="width:${Math.min(100, pct)}%;background:${over ? 'var(--over)' : color}"></div></div></div>`;
+}
+function doseList(k){
+  const list = scheduled(k);
+  const d = S.days[k] || {supps:{}};
+  if(!list.length) return `<p class="empty">No supplements scheduled for this day. Add them on the Supplements tab.</p>`;
+  return `<div class="doses">${list.map(({s, time}) => {
+    const on = !!(d.supps && d.supps[s.id + '|' + time]);
+    return `<button class="dose ${on ? 'on' : ''}" data-action="toggleDose" data-id="${s.id}" data-time="${time}" aria-pressed="${on}">
+      <span class="box">${on ? '✓' : ''}</span><span><span class="dname">${esc(s.name)}</span><br><span class="dmeta">${time}${s.dose ? ' · ' + esc(s.dose) : ''}</span></span></button>`;
+  }).join('')}</div>`;
+}
+function macroLine(n){
+  return `<span class="macros-line">${r0(n.kcal)} kcal · P <b>${r0(n.protein)}</b> · F <b>${r0(n.fat)}</b> · C <b>${r0(S.settings.carbMode==='net' ? Math.max(0, n.carbs - n.fiber) : n.carbs)}</b>${S.settings.carbMode==='net' ? ' net' : ''}</span>`;
+}
+
+/* ---------- tabs ---------- */
+function renderDash(){
+  const t = totals(ui.date), T = S.settings.targets;
+  const pct = T.kcal ? t.kcal / T.kcal * 100 : 0;
+  const left = T.kcal - t.kcal;
+  const sched = scheduled(ui.date);
+  const d = S.days[ui.date] || {supps:{}};
+  const taken = sched.filter(x => d.supps && d.supps[x.s.id + '|' + x.time]).length;
+  const carbLabel = S.settings.carbMode === 'net' ? 'Net carbs' : 'Carbs';
+  return `
+  <section class="tank" aria-label="Calories">
+    <div class="tank-top">
+      <div><div class="big">${r0(t.kcal).toLocaleString()}</div><div class="sub">of ${r0(T.kcal).toLocaleString()} kcal eaten</div></div>
+      <div class="right"><div class="mid">${r0(Math.abs(left)).toLocaleString()}</div><div class="sub">${left >= 0 ? 'remaining' : 'over target'}</div></div>
+    </div>
+    <div class="gauge"><div class="gfill ${pct > 100 ? 'over' : ''}" style="width:${Math.min(100, pct)}%"></div>
+      <span class="tick" style="left:25%"></span><span class="tick" style="left:50%"></span><span class="tick" style="left:75%"></span></div>
+    <div class="gscale"><span>E</span><span>½</span><span>F</span></div>
+  </section>
+  <section class="card">
+    <h2>Macros</h2>
+    ${bar('Protein', t.protein, T.protein, 'g', 'var(--protein)')}
+    ${bar('Fat', t.fat, T.fat, 'g', 'var(--fat)')}
+    ${bar(carbLabel, carbShown(t), T.carbs, 'g', 'var(--carb)', true)}
+    ${bar('Fiber', t.fiber, T.fiber, 'g', 'var(--fiber)')}
+    ${bar('Water', t.water, S.settings.waterGoal, 'oz', 'var(--water)')}
+  </section>
+  <section class="card">
+    <h2>Supplements <span style="font-size:16px;color:var(--muted)">${taken} of ${sched.length} taken</span></h2>
+    ${doseList(ui.date)}
+  </section>
+  <section class="card">
+    <h2>Micronutrients</h2>
+    <p class="hint">Food plus supplements checked off today.</p>
+    <div class="micros">${MICRO_KEYS.map(k => bar(NMAP[k].label, t[k], S.settings.micros[k], NMAP[k].unit, 'var(--accent)')).join('')}</div>
+  </section>`;
+}
+
+function previewHTML(){
+  const s = ui.sel; if(!s) return '';
+  const u = s.food.units[s.unit] || s.food.units[0];
+  const n = scaled(s.food, (Number(s.qty) || 0) * u.g);
+  const c = S.settings.carbMode === 'net' ? Math.max(0, n.carbs - n.fiber) : n.carbs;
+  return `<div><div class="pv">${r0(n.kcal)}</div><div class="pl">kcal</div></div>
+    <div><div class="pv">${r0(n.protein)}</div><div class="pl">protein g</div></div>
+    <div><div class="pv">${r0(n.fat)}</div><div class="pl">fat g</div></div>
+    <div><div class="pv">${r0(c)}</div><div class="pl">${S.settings.carbMode === 'net' ? 'net carbs g' : 'carbs g'}</div></div>`;
+}
+function renderFood(){
+  const d = S.days[ui.date] || {food:[]};
+  const meals = MEALS.map(m => {
+    const items = (d.food||[]).filter(f => f.meal === m);
+    if(!items.length) return '';
+    const kc = items.reduce((a, f) => a + (f.n.kcal||0), 0);
+    return `<div class="mealhead"><h3>${m}</h3><span>${r0(kc)} kcal</span></div><ul class="list">${items.map(f => `
+      <li><div class="main"><div class="t">${esc(f.name)}</div><div class="m">${esc(f.amount)}</div>${macroLine(f.n)}</div>
+      <button class="icon" data-action="delFood" data-id="${f.id}" aria-label="Remove ${esc(f.name)}">×</button></li>`).join('')}</ul>`;
+  }).join('');
+
+  let picker;
+  if(ui.sel){
+    const s = ui.sel, f = s.food;
+    picker = `<div class="card" style="background:var(--bg)">
+      <div class="t" style="font-weight:600;font-size:17px">${esc(f.name)}</div>
+      <div class="m" style="color:var(--muted);font-size:13px">${esc([f.brand, f.type].filter(Boolean).join(' · '))}</div>
+      <div class="grid2" style="margin-top:12px">
+        <label class="fld">Amount<input type="number" id="qty" inputmode="decimal" step="any" min="0" value="${esc(s.qty)}"></label>
+        <label class="fld">Unit<select id="unit">${f.units.map((u, i) => `<option value="${i}" ${i == s.unit ? 'selected' : ''}>${esc(u.label)}</option>`).join('')}</select></label>
+      </div>
+      <div class="preview" id="preview">${previewHTML()}</div>
+      <div class="btns"><button class="btn" data-action="addFood">Add to ${ui.meal}</button><button class="btn ghost" data-action="cancelSel">Cancel</button></div>
+    </div>`;
+  } else if(ui.searching){
+    picker = `<p class="empty">Searching…</p>`;
+  } else if(ui.results.length){
+    picker = `<ul class="list">${ui.results.map((f, i) => `<li><button class="pick" data-action="pickResult" data-i="${i}">
+      <div class="t">${esc(f.name)}</div><div class="m">${esc([f.brand, f.type].filter(Boolean).join(' · '))} · per 100 g: ${r0(f.per100.kcal)} kcal, P ${r0(f.per100.protein)} F ${r0(f.per100.fat)} C ${r0(f.per100.carbs)}</div></button></li>`).join('')}</ul>
+      <button class="btn ghost wide" style="margin-top:8px" data-action="clearResults">Clear results</button>`;
+  } else {
+    const recents = Object.values(S.library).sort((a, b) => (b.lastUsed||0) - (a.lastUsed||0)).slice(0, 20);
+    picker = recents.length ? `<h3 style="margin-top:4px">Recent foods</h3><ul class="list">${recents.map(f => `<li>
+      <button class="pick" data-action="pickRecent" data-id="${esc(f.id)}"><div class="t">${esc(f.name)}</div><div class="m">${esc(f.lastAmount || '')}</div></button>
+      <button class="icon" data-action="forgetFood" data-id="${esc(f.id)}" aria-label="Remove from recent">×</button></li>`).join('')}</ul>`
+      : `<p class="empty">Search for a food above. Foods you log show up here for one-tap re-adding.</p>`;
+  }
+
+  const custom = ui.custom ? `<div class="card" style="background:var(--bg)">
+      <h3>Custom food</h3><p class="hint">For anything the database misses. Values are per one serving.</p>
+      <label class="fld">Name<input type="text" id="cName" placeholder="Homemade beef chili"></label>
+      <label class="fld">Serving<input type="text" id="cServ" placeholder="1 bowl"></label>
+      <div class="grid3">
+        <label class="fld">Calories<input type="number" inputmode="decimal" step="any" id="cKcal"></label>
+        <label class="fld">Protein g<input type="number" inputmode="decimal" step="any" id="cP"></label>
+        <label class="fld">Fat g<input type="number" inputmode="decimal" step="any" id="cF"></label>
+        <label class="fld">Carbs g<input type="number" inputmode="decimal" step="any" id="cC"></label>
+        <label class="fld">Fiber g<input type="number" inputmode="decimal" step="any" id="cFi"></label>
+        <label class="fld">Sodium mg<input type="number" inputmode="decimal" step="any" id="cNa"></label>
+      </div>
+      <div class="btns"><button class="btn" data-action="saveCustom">Add to ${ui.meal}</button><button class="btn ghost" data-action="toggleCustom">Cancel</button></div></div>` : '';
+
+  return `
+  <section class="card">
+    <h2>Add food</h2>
+    <div class="seg" role="group" aria-label="Meal">${MEALS.map(m => `<button data-action="meal" data-meal="${m}" class="${ui.meal === m ? 'on' : ''}" aria-pressed="${ui.meal === m}">${m}</button>`).join('')}</div>
+    <form class="searchbar" id="searchForm" role="search">
+      <input type="search" id="q" placeholder="${ui.filter === 'branded' ? 'Brand and product, e.g. Fairlife milk' : 'e.g. ribeye steak, avocado, eggs'}" value="${esc(ui.q)}" autocomplete="off" enterkeyhint="search" aria-label="Search foods">
+      <button class="btn" type="submit">Search</button>
+    </form>
+    <div class="seg" style="margin-top:10px" role="group" aria-label="Database">
+      <button data-action="filter" data-f="whole" class="${ui.filter === 'whole' ? 'on' : ''}">Whole and common foods</button>
+      <button data-action="filter" data-f="branded" class="${ui.filter === 'branded' ? 'on' : ''}">Branded products</button>
+    </div>
+    ${ui.err ? `<p class="err">${esc(ui.err)}</p>` : ''}
+    ${picker}
+    ${custom || `<button class="btn ghost wide" style="margin-top:12px" data-action="toggleCustom">Add a custom food</button>`}
+  </section>
+  <section class="card">
+    <h2>Logged</h2>
+    ${meals || '<p class="empty">Nothing logged for this day yet.</p>'}
+  </section>`;
+}
+
+function renderWater(){
+  const d = S.days[ui.date] || {water:[]};
+  const t = totals(ui.date).water, g = S.settings.waterGoal;
+  return `
+  <section class="card">
+    <h2>Water</h2>
+    <div class="waterbig"><span class="big" style="color:var(--water)">${r0(t)}</span><span class="sub" style="opacity:1;color:var(--muted)">of ${g} oz</span></div>
+    <div class="track" style="height:12px;margin-top:10px"><div class="fill" style="width:${Math.min(100, g ? t / g * 100 : 0)}%;background:var(--water)"></div></div>
+    <div class="quick">${[8, 12, 16, 20, 24, 32].map(oz => `<button data-action="water" data-oz="${oz}">+${oz} oz</button>`).join('')}</div>
+    <div class="searchbar"><input type="number" id="wCustom" inputmode="decimal" step="any" placeholder="Custom amount in oz" aria-label="Custom amount in ounces"><button class="btn" data-action="waterCustom">Add</button></div>
+  </section>
+  <section class="card">
+    <h2>Today's log</h2>
+    ${(d.water||[]).length ? `<ul class="list">${d.water.slice().reverse().map(w => `<li><div class="main"><div class="k">${r1(w.oz)} oz</div><div class="m">${new Date(w.t).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})}</div></div>
+      <button class="icon" data-action="delWater" data-id="${w.id}" aria-label="Remove">×</button></li>`).join('')}</ul>` : '<p class="empty">No water logged yet. Tap an amount above.</p>'}
+  </section>`;
+}
+
+function unitOptions(row){
+  const d = NMAP[row.k] || NUTR[0];
+  const opts = [d.unit]; if(row.k === 'vitd') opts.push('IU');
+  return opts.map(u => `<option ${u === row.u ? 'selected' : ''}>${u}</option>`).join('');
+}
+function suppForm(){
+  const s = ui.editSupp;
+  return `<section class="card">
+    <h2>${s.isNew ? 'Add supplement' : 'Edit supplement'}</h2>
+    <label class="fld">Name<input type="text" id="sName" value="${esc(s.name)}" placeholder="Vitamin D3"></label>
+    <label class="fld">Dose<input type="text" id="sDose" value="${esc(s.dose)}" placeholder="1 softgel"></label>
+    <div class="fld"><span>When</span><div class="chips">${TIMES.map(t => `<label class="chip"><input type="checkbox" name="sTime" value="${t}" ${s.times.includes(t) ? 'checked' : ''}><span>${t}</span></label>`).join('')}</div></div>
+    <div class="fld"><span>Days</span><div class="chips">${DOW.map((d, i) => `<label class="chip"><input type="checkbox" name="sDay" value="${i}" ${s.days.includes(i) ? 'checked' : ''}><span>${d}</span></label>`).join('')}</div></div>
+    <div class="fld"><span>Nutrients per dose</span>
+      <p class="hint" style="font-weight:400">Copy these from the label so they count toward daily totals. Leave empty for things you only want to check off, like creatine.</p>
+      <div id="nutRows">${s.nuts.map((n, i) => `<div class="nutrow">
+        <select class="nk" aria-label="Nutrient">${NUTR.map(d => `<option value="${d.k}" ${d.k === n.k ? 'selected' : ''}>${d.label}</option>`).join('')}</select>
+        <input class="na" type="number" inputmode="decimal" step="any" value="${esc(n.amt)}" aria-label="Amount">
+        <select class="nu" aria-label="Unit">${unitOptions(n)}</select>
+        <button type="button" class="icon" data-action="suppDelNut" data-i="${i}" aria-label="Remove nutrient">×</button></div>`).join('')}</div>
+      <button class="btn ghost" data-action="suppAddNut" style="align-self:flex-start">Add nutrient</button>
+    </div>
+    <label class="fld">Notes<input type="text" id="sNotes" value="${esc(s.notes)}" placeholder="Take with a fat-containing meal"></label>
+    <label class="fld" style="flex-direction:row;align-items:center;gap:8px;font-weight:500"><input type="checkbox" id="sActive" ${s.active !== false ? 'checked' : ''}> Currently taking</label>
+    <div class="btns"><button class="btn" data-action="saveSupp">Save supplement</button><button class="btn ghost" data-action="cancelSupp">Cancel</button>${s.isNew ? '' : '<button class="btn danger" data-action="delSupp">Delete</button>'}</div>
+  </section>`;
+}
+function syncSuppForm(){
+  const s = ui.editSupp; if(!s || !$('#sName')) return;
+  s.name = $('#sName').value; s.dose = $('#sDose').value; s.notes = $('#sNotes').value; s.active = $('#sActive').checked;
+  s.times = [...document.querySelectorAll('input[name=sTime]:checked')].map(x => x.value);
+  s.days = [...document.querySelectorAll('input[name=sDay]:checked')].map(x => +x.value);
+  s.nuts = [...document.querySelectorAll('#nutRows .nutrow')].map(r => {
+    const k = r.querySelector('.nk').value; let u = r.querySelector('.nu').value;
+    if(u === 'IU' && k !== 'vitd') u = NMAP[k].unit;
+    if(u !== 'IU' && u !== NMAP[k].unit) u = NMAP[k].unit;
+    return {k, amt:r.querySelector('.na').value, u};
+  });
+}
+function renderSupps(){
+  if(ui.editSupp) return suppForm();
+  const list = S.supplements;
+  return `
+  <section class="card">
+    <h2>Check off</h2>
+    ${doseList(ui.date)}
+  </section>
+  <section class="card">
+    <h2>Your supplements</h2>
+    ${list.length ? `<ul class="list">${list.map(s => {
+      const nut = Object.entries(s.nutrients||{}).map(([k, v]) => `${NMAP[k] ? NMAP[k].label : k} ${fmtN(v, NMAP[k] && NMAP[k].unit)} ${NMAP[k] ? NMAP[k].unit : ''}`).join(', ');
+      const days = s.days.length === 7 ? 'Daily' : s.days.map(i => DOW[i]).join(' ');
+      return `<li><button class="pick" data-action="editSupp" data-id="${s.id}">
+        <div class="t">${esc(s.name)}${s.active === false ? ' <span class="m">(paused)</span>' : ''}</div>
+        <div class="m">${esc(s.dose || '')}${s.dose ? ' · ' : ''}${s.times.join(', ')} · ${days}</div>
+        ${nut ? `<div class="m">${esc(nut)}</div>` : ''}${s.notes ? `<div class="m">${esc(s.notes)}</div>` : ''}</button></li>`;
+    }).join('')}</ul>` : '<p class="empty">No supplements yet. Add each one with its dose, schedule, and label nutrients.</p>'}
+    <button class="btn wide" style="margin-top:10px" data-action="newSupp">Add supplement</button>
+  </section>`;
+}
+
+function num(path, label, step='any'){
+  const v = path.split('.').reduce((o, k) => o[k], S);
+  return `<label class="fld">${label}<input type="number" inputmode="decimal" step="${step}" data-path="${path}" value="${esc(v)}"></label>`;
+}
+function sel(path, label, opts){
+  const v = String(path.split('.').reduce((o, k) => o[k], S));
+  return `<label class="fld">${label}<select data-path="${path}">${opts.map(([val, txt]) => `<option value="${val}" ${String(val) === v ? 'selected' : ''}>${txt}</option>`).join('')}</select></label>`;
+}
+function renderSettings(){
+  const c = calc();
+  return `
+  <section class="card">
+    <h2>Goal calculator</h2>
+    <p class="hint">Estimates daily needs with the Mifflin-St Jeor equation. Review the numbers, then apply them and adjust below.</p>
+    <div class="grid2">
+      ${sel('settings.profile.sex', 'Sex', [['M','Male'],['F','Female']])}
+      ${num('settings.profile.age', 'Age', '1')}
+      ${num('settings.profile.ft', 'Height ft', '1')}
+      ${num('settings.profile.inch', 'Height in', '1')}
+      ${num('settings.profile.lb', 'Weight lb')}
+      ${num('settings.profile.ppl', 'Protein g per lb', '0.05')}
+    </div>
+    ${sel('settings.profile.activity', 'Activity', [['1.2','Mostly sitting'],['1.375','Light exercise 1 to 3 days'],['1.55','Moderate training 3 to 5 days'],['1.725','Hard training 6 to 7 days'],['1.9','Endurance block or two-a-days']])}
+    ${sel('settings.profile.goal', 'Goal', [['-0.2','Lose fat faster (20% deficit)'],['-0.1','Lose fat slowly (10% deficit)'],['0','Maintain'],['0.1','Gain (10% surplus)']])}
+    ${sel('settings.profile.style', 'Eating style', [['keto','Ketogenic (25 g net carbs)'],['low','Low carb (75 g net carbs)'],['bal','Balanced (40% carbs)'],['endur','Endurance fueling (50% carbs)']])}
+    <div class="calcout">BMR <b>${c.bmr}</b> · maintenance <b>${c.tdee}</b> kcal<br>
+      Suggested: <b>${c.kcal}</b> kcal · P <b>${c.protein}</b> g · F <b>${c.fat}</b> g · ${c.mode === 'net' ? 'net ' : ''}C <b>${c.carbs}</b> g · fiber <b>${c.fiber}</b> g</div>
+    <button class="btn" data-action="applyCalc">Apply to daily targets</button>
+  </section>
+  <section class="card">
+    <h2>Daily targets</h2>
+    <div class="grid2">
+      ${num('settings.targets.kcal', 'Calories', '10')}
+      ${num('settings.targets.protein', 'Protein g')}
+      ${num('settings.targets.fat', 'Fat g')}
+      ${num('settings.targets.carbs', 'Carbs g')}
+      ${num('settings.targets.fiber', 'Fiber g')}
+      ${num('settings.waterGoal', 'Water oz')}
+    </div>
+    ${sel('settings.carbMode', 'Count carbs as', [['net','Net carbs (total minus fiber)'],['total','Total carbs']])}
+  </section>
+  <section class="card">
+    <h2>Micronutrient targets</h2>
+    <p class="hint">Defaults are adult male reference intakes. Sodium is set higher for training and low-carb eating. Adjust any of these with your provider.</p>
+    <div class="grid2">${MICRO_KEYS.map(k => num('settings.micros.' + k, `${NMAP[k].label} ${NMAP[k].unit}`)).join('')}</div>
+  </section>
+  <section class="card">
+    <h2>Food database</h2>
+    <p class="hint">Uses the USDA FoodData Central database. The shared demo key allows only a few searches per hour. A free personal key from api.data.gov/signup allows 1,000 per hour.</p>
+    <label class="fld">USDA API key<input type="text" data-path="settings.apiKey" value="${esc(S.settings.apiKey)}" autocomplete="off" autocapitalize="off" spellcheck="false"></label>
+  </section>
+  <section class="card">
+    <h2>Display</h2>
+    ${sel('settings.theme', 'Theme', [['auto','Match phone'],['light','Light'],['dark','Dark']])}
+  </section>
+  <section class="card">
+    <h2>Backup</h2>
+    <p class="hint">Data lives only in this browser on this phone. Export a backup regularly.</p>
+    <div class="btns">
+      <button class="btn" data-action="exportJson">Export backup</button>
+      <button class="btn ghost" data-action="importJson">Restore backup</button>
+      <button class="btn ghost" data-action="exportCsv">Export daily totals (CSV)</button>
+    </div>
+    <div class="btns" style="margin-top:14px"><button class="btn danger" data-action="resetAll">Erase all data</button></div>
+  </section>`;
+}
+
+const ICONS = {
+  dash:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 18a8 8 0 1 1 16 0"/><path d="M12 18l4-6"/></svg>',
+  food:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M7 3v8a2 2 0 0 0 4 0V3M9 11v10M17 3c-2 0-3 3-3 7h3v11"/></svg>',
+  water:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3s6 7 6 11a6 6 0 0 1-12 0c0-4 6-11 6-11z"/></svg>',
+  supps:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="8" width="18" height="8" rx="4" transform="rotate(-35 12 12)"/><path d="M9.7 8.7l4.6 6.6"/></svg>',
+  settings:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>'
+};
+const TABS = [['dash','Dashboard'],['food','Food'],['water','Water'],['supps','Supps'],['settings','Settings']];
+
+function dateLabel(){
+  const today = dkey(new Date());
+  const y = new Date(); y.setDate(y.getDate() - 1);
+  if(ui.date === today) return 'Today';
+  if(ui.date === dkey(y)) return 'Yesterday';
+  return parseKey(ui.date).toLocaleDateString([], {weekday:'short', month:'short', day:'numeric'});
+}
+function render(){
+  $('#dlabel').textContent = dateLabel();
+  $('#tabs').innerHTML = TABS.map(([k, l]) => `<button data-action="tab" data-tab="${k}" class="${ui.tab === k ? 'on' : ''}" aria-current="${ui.tab === k ? 'page' : 'false'}">${ICONS[k]}${l}</button>`).join('');
+  const body = {dash:renderDash, food:renderFood, water:renderWater, supps:renderSupps, settings:renderSettings}[ui.tab]();
+  $('#main').innerHTML = body + `<footer class="ver">Fuel Log ${VERSION}</footer>`;
+}
+
+/* ---------- actions ---------- */
+function shiftDay(n){ const d = parseKey(ui.date); d.setDate(d.getDate() + n); ui.date = dkey(d); ui.sel = null; }
+function selectFood(food){
+  const si = food.units.findIndex(u => u.serving);
+  ui.sel = {food, unit: si >= 0 ? si : 0, qty: si >= 0 ? 1 : 100};
+  if(food.lastUnit != null && food.units[food.lastUnit]){ ui.sel.unit = food.lastUnit; ui.sel.qty = food.lastQty; }
+}
+const A = {
+  tab: el => { if(ui.tab === 'supps') ui.editSupp = null; ui.tab = el.dataset.tab; window.scrollTo(0, 0); },
+  prevDay: () => shiftDay(-1),
+  nextDay: () => shiftDay(1),
+  today: () => { ui.date = dkey(new Date()); },
+  toggleDose: el => { const d = day(ui.date); const key = el.dataset.id + '|' + el.dataset.time; if(d.supps[key]) delete d.supps[key]; else d.supps[key] = true; save(); },
+  meal: el => { ui.meal = el.dataset.meal; },
+  filter: el => { ui.filter = el.dataset.f; ui.results = []; ui.err = ''; ui.sel = null; },
+  pickResult: el => selectFood(ui.results[+el.dataset.i]),
+  pickRecent: el => { const f = S.library[el.dataset.id]; if(f) selectFood(f); },
+  forgetFood: el => { delete S.library[el.dataset.id]; save(); },
+  cancelSel: () => { ui.sel = null; },
+  clearResults: () => { ui.results = []; ui.err = ''; },
+  addFood: () => {
+    const s = ui.sel; const qty = Number(s.qty);
+    if(!(qty > 0)){ toast('Enter an amount greater than zero.'); return false; }
+    const u = s.food.units[s.unit];
+    const amount = u.label === 'grams' ? `${r1(qty)} g` : u.label === 'ounces' ? `${r1(qty)} oz` : u.label === 'serving' ? `${r1(qty)} serving${qty === 1 ? '' : 's'}` : `${r1(qty)} × ${u.label}`;
+    day(ui.date).food.push({id:uid(), meal:ui.meal, name:s.food.name + (s.food.brand ? ` (${s.food.brand})` : ''), amount, n:scaled(s.food, qty * u.g), foodId:s.food.id, t:Date.now()});
+    S.library[s.food.id] = {...s.food, lastUsed:Date.now(), lastUnit:s.unit, lastQty:qty, lastAmount:amount};
+    ui.sel = null; ui.results = []; ui.q = ''; save(); toast(`Added to ${ui.meal}`);
+  },
+  delFood: el => { const d = day(ui.date); d.food = d.food.filter(f => f.id !== el.dataset.id); save(); },
+  toggleCustom: () => { ui.custom = !ui.custom; },
+  saveCustom: () => {
+    const name = $('#cName').value.trim(); if(!name){ toast('Give the food a name.'); return false; }
+    const v = id => Number($(id).value) || 0;
+    const p = zero(); p.protein = v('#cP'); p.fat = v('#cF'); p.carbs = v('#cC'); p.fiber = v('#cFi'); p.sodium = v('#cNa');
+    p.kcal = v('#cKcal') || (4*p.protein + 4*p.carbs + 9*p.fat);
+    const serv = $('#cServ').value.trim() || 'serving';
+    const food = {id:'custom' + uid(), name, brand:'', type:'Custom', per100:p, units:[{label:serv, g:100, serving:true}]};
+    day(ui.date).food.push({id:uid(), meal:ui.meal, name, amount:`1 × ${serv}`, n:scaled(food, 100), foodId:food.id, t:Date.now()});
+    S.library[food.id] = {...food, lastUsed:Date.now(), lastUnit:0, lastQty:1, lastAmount:`1 × ${serv}`};
+    ui.custom = false; save(); toast(`Added to ${ui.meal}`);
+  },
+  water: el => { day(ui.date).water.push({id:uid(), oz:+el.dataset.oz, t:Date.now()}); save(); },
+  waterCustom: () => { const oz = Number($('#wCustom').value); if(!(oz > 0)){ toast('Enter ounces greater than zero.'); return false; } day(ui.date).water.push({id:uid(), oz, t:Date.now()}); save(); },
+  delWater: el => { const d = day(ui.date); d.water = d.water.filter(w => w.id !== el.dataset.id); save(); },
+  newSupp: () => { ui.editSupp = {isNew:true, id:uid(), name:'', dose:'', times:['Morning'], days:[0,1,2,3,4,5,6], nuts:[], notes:'', active:true}; window.scrollTo(0, 0); },
+  editSupp: el => { const s = S.supplements.find(x => x.id === el.dataset.id); if(s){ ui.editSupp = JSON.parse(JSON.stringify({...s, nuts:s.nuts || []})); window.scrollTo(0, 0); } },
+  suppAddNut: () => { syncSuppForm(); ui.editSupp.nuts.push({k:'vitd', amt:'', u:'IU'}); },
+  suppDelNut: el => { syncSuppForm(); ui.editSupp.nuts.splice(+el.dataset.i, 1); },
+  cancelSupp: () => { ui.editSupp = null; },
+  delSupp: () => { if(!confirm('Delete this supplement? Past check-offs stop counting toward totals.')) return false; S.supplements = S.supplements.filter(x => x.id !== ui.editSupp.id); ui.editSupp = null; save(); },
+  saveSupp: () => {
+    syncSuppForm(); const s = ui.editSupp;
+    if(!s.name.trim()){ toast('Give the supplement a name.'); return false; }
+    if(!s.times.length){ toast('Pick at least one time of day.'); return false; }
+    if(!s.days.length){ toast('Pick at least one day.'); return false; }
+    const nutrients = {};
+    s.nuts = s.nuts.filter(n => Number(n.amt) > 0);
+    s.nuts.forEach(n => { const base = n.u === 'IU' ? Number(n.amt) / 40 : Number(n.amt); nutrients[n.k] = (nutrients[n.k] || 0) + base; });
+    const rec = {id:s.id, name:s.name.trim(), dose:s.dose.trim(), times:TIMES.filter(t => s.times.includes(t)), days:s.days.sort(), nuts:s.nuts, nutrients, notes:s.notes.trim(), active:s.active};
+    const i = S.supplements.findIndex(x => x.id === s.id);
+    if(i >= 0) S.supplements[i] = rec; else S.supplements.push(rec);
+    ui.editSupp = null; save(); toast('Supplement saved');
+  },
+  applyCalc: () => { const c = calc(); Object.assign(S.settings.targets, {kcal:c.kcal, protein:c.protein, fat:c.fat, carbs:c.carbs, fiber:c.fiber}); S.settings.carbMode = c.mode; save(); toast('Targets updated'); },
+  exportJson: () => {
+    download(`fuel-log-backup-${dkey(new Date())}.json`, JSON.stringify(S, null, 2), 'application/json'); return false;
+  },
+  importJson: () => { $('#importFile').click(); return false; },
+  exportCsv: () => {
+    const cols = ['kcal','protein','fat','carbs','fiber', ...MICRO_KEYS];
+    const rows = [['date', ...cols.map(k => `${k}_${NMAP[k].unit}`), 'net_carbs_g', 'water_oz', 'doses_taken', 'doses_scheduled'].join(',')];
+    Object.keys(S.days).sort().forEach(k => {
+      const t = totals(k); const sc = scheduled(k); const d = S.days[k];
+      const taken = sc.filter(x => d.supps && d.supps[x.s.id + '|' + x.time]).length;
+      rows.push([k, ...cols.map(c => r1(t[c])), r1(Math.max(0, t.carbs - t.fiber)), r1(t.water), taken, sc.length].join(','));
+    });
+    download(`fuel-log-daily-${dkey(new Date())}.csv`, rows.join('\n'), 'text/csv'); return false;
+  },
+  resetAll: () => { if(!confirm('Erase every log, supplement, and setting on this phone? Export a backup first if you want to keep it.')) return false; S = defaults(); save(); applyTheme(); toast('All data erased'); }
+};
+function download(name, text, type){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], {type}));
+  a.download = name; document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+}
+
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-action]'); if(!el) return;
+  const fn = A[el.dataset.action]; if(!fn) return;
+  e.preventDefault();
+  if(fn(el, e) !== false) render();
+});
+document.addEventListener('submit', e => {
+  if(e.target.id === 'searchForm'){ e.preventDefault(); ui.q = $('#q').value; doSearch(); }
+});
+document.addEventListener('input', e => {
+  if(e.target.id === 'q') ui.q = e.target.value;
+  if(e.target.id === 'qty' && ui.sel){ ui.sel.qty = e.target.value; $('#preview').innerHTML = previewHTML(); }
+});
+document.addEventListener('change', e => {
+  const t = e.target;
+  if(t.id === 'unit' && ui.sel){
+    ui.sel.unit = +t.value;
+    const u = ui.sel.food.units[ui.sel.unit];
+    ui.sel.qty = u.label === 'grams' ? 100 : u.label === 'ounces' ? 4 : 1;
+    $('#qty').value = ui.sel.qty; $('#preview').innerHTML = previewHTML(); return;
+  }
+  if(t.classList.contains('nk')){ syncSuppForm(); const i = [...document.querySelectorAll('#nutRows .nk')].indexOf(t); ui.editSupp.nuts[i].u = NMAP[t.value].unit; render(); return; }
+  if(t.dataset.path){
+    const parts = t.dataset.path.split('.'); const last = parts.pop();
+    const obj = parts.reduce((o, k) => o[k], S);
+    let v = t.value;
+    if(t.type === 'number'){ v = Number(v); if(!isFinite(v) || v < 0){ toast('Enter a number zero or higher.'); render(); return; } }
+    else if(t.tagName === 'SELECT' && ['activity','goal'].includes(last)) v = Number(v);
+    else if(t.tagName === 'INPUT') v = v.trim();
+    obj[last] = v; save();
+    if(last === 'theme') applyTheme();
+    if(t.dataset.path.startsWith('settings.profile')) render();
+  }
+});
+$('#importFile').addEventListener('change', e => {
+  const file = e.target.files[0]; if(!file) return;
+  const r = new FileReader();
+  r.onload = () => {
+    try{
+      const data = JSON.parse(r.result);
+      if(!data || typeof data !== 'object' || !data.settings || !data.days) throw new Error();
+      if(!confirm('Replace everything on this phone with this backup?')) return;
+      localStorage.setItem(STORE, JSON.stringify(data)); S = load(); applyTheme(); render(); toast('Backup restored');
+    }catch(err){ toast('That file is not a Fuel Log backup.'); }
+    e.target.value = '';
+  };
+  r.readAsText(file);
+});
+document.addEventListener('visibilitychange', () => { if(!document.hidden) render(); });
+
+applyTheme();
+render();
+</script>
+</body>
+</html>
