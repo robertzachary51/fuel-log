@@ -148,6 +148,17 @@ input[type=text],input[type=number],input[type=search],select{width:100%;backgro
 footer.ver{text-align:center;color:var(--muted);font-size:13px;padding:8px 0 16px}
 .toast{position:fixed;left:50%;bottom:calc(88px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--surface);padding:10px 16px;border-radius:10px;font-size:14px;z-index:30;max-width:90vw}
 
+.actions3{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+.actions2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+.actions3 .btn,.actions2 .btn{padding:10px 4px;font-size:14px}
+details{margin:6px 0 10px}
+details summary{cursor:pointer;font-weight:600;padding:6px 0}
+pre.raw{white-space:pre-wrap;font-size:12px;line-height:1.35;background:var(--surface);border:1px solid var(--line);padding:8px;border-radius:8px;max-height:220px;overflow:auto}
+#overlay{position:fixed;inset:0;z-index:40;background:rgba(10,16,20,.6);display:flex;align-items:flex-end;justify-content:center;padding-top:env(safe-area-inset-top,0px)}
+#overlay[hidden]{display:none}
+.sheet{background:var(--surface);width:100%;max-width:680px;border-radius:16px 16px 0 0;padding:18px 16px calc(18px + env(safe-area-inset-bottom,0px));max-height:100%;overflow:auto}
+#reader{width:100%;min-height:200px;border-radius:10px;overflow:hidden;background:#000;margin-bottom:8px}
+#reader video{width:100%!important;height:auto!important;display:block}
 nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--surface);border-top:1px solid var(--line);display:flex;padding-bottom:env(safe-area-inset-bottom,0px)}
 nav.tabs button{flex:1;background:transparent;border:0;padding:10px 2px 12px;font:600 15px/1 var(--num);color:var(--muted);cursor:pointer;position:relative}
 nav.tabs button svg{display:block;margin:0 auto 4px;width:22px;height:22px}
@@ -169,9 +180,12 @@ nav.tabs button.on::before{content:"";position:absolute;top:0;left:22%;right:22%
 <main id="main"></main>
 <nav class="tabs" id="tabs"></nav>
 <input type="file" id="importFile" accept="application/json,.json" hidden>
+<input type="file" id="labelFile" accept="image/*" hidden>
+<input type="file" id="barcodeFile" accept="image/*" hidden>
+<div id="overlay" hidden></div>
 
 <script>
-const VERSION = 'v1.0';
+const VERSION = 'v1.1';
 const STORE = 'fuelLog.v1';
 
 const NUTR = [
@@ -246,7 +260,7 @@ function save(){
 function day(k){ return S.days[k] || (S.days[k] = {food:[], water:[], supps:{}}); }
 function autoMeal(){ const h = new Date().getHours(); return h < 11 ? 'Breakfast' : h < 15 ? 'Lunch' : h < 20 ? 'Dinner' : 'Snacks'; }
 
-const ui = {tab:'dash', date:dkey(new Date()), q:'', filter:'whole', results:[], searching:false, err:'', sel:null, meal:autoMeal(), custom:false, editSupp:null};
+const ui = {tab:'dash', date:dkey(new Date()), q:'', filter:'whole', results:[], searching:false, err:'', sel:null, meal:autoMeal(), label:null, editSupp:null};
 
 function applyTheme(){
   const t = S.settings.theme;
@@ -467,19 +481,7 @@ function renderFood(){
       : `<p class="empty">Search for a food above. Foods you log show up here for one-tap re-adding.</p>`;
   }
 
-  const custom = ui.custom ? `<div class="card" style="background:var(--bg)">
-      <h3>Custom food</h3><p class="hint">For anything the database misses. Values are per one serving.</p>
-      <label class="fld">Name<input type="text" id="cName" placeholder="Homemade beef chili"></label>
-      <label class="fld">Serving<input type="text" id="cServ" placeholder="1 bowl"></label>
-      <div class="grid3">
-        <label class="fld">Calories<input type="number" inputmode="decimal" step="any" id="cKcal"></label>
-        <label class="fld">Protein g<input type="number" inputmode="decimal" step="any" id="cP"></label>
-        <label class="fld">Fat g<input type="number" inputmode="decimal" step="any" id="cF"></label>
-        <label class="fld">Carbs g<input type="number" inputmode="decimal" step="any" id="cC"></label>
-        <label class="fld">Fiber g<input type="number" inputmode="decimal" step="any" id="cFi"></label>
-        <label class="fld">Sodium mg<input type="number" inputmode="decimal" step="any" id="cNa"></label>
-      </div>
-      <div class="btns"><button class="btn" data-action="saveCustom">Add to ${ui.meal}</button><button class="btn ghost" data-action="toggleCustom">Cancel</button></div></div>` : '';
+  if(ui.label) picker = labelFormHTML();
 
   return `
   <section class="card">
@@ -493,9 +495,14 @@ function renderFood(){
       <button data-action="filter" data-f="whole" class="${ui.filter === 'whole' ? 'on' : ''}">Whole and common foods</button>
       <button data-action="filter" data-f="branded" class="${ui.filter === 'branded' ? 'on' : ''}">Branded products</button>
     </div>
+    <div class="actions3">
+      <button class="btn ghost" data-action="scanFood">Scan barcode</button>
+      <button class="btn ghost" data-action="photoFood">Photo of label</button>
+      <button class="btn ghost" data-action="customFood">Custom food</button>
+    </div>
     ${ui.err ? `<p class="err">${esc(ui.err)}</p>` : ''}
-    ${picker}
-    ${custom || `<button class="btn ghost wide" style="margin-top:12px" data-action="toggleCustom">Add a custom food</button>`}
+    <div style="margin-top:12px">${picker}</div>
+
   </section>
   <section class="card">
     <h2>Logged</h2>
@@ -530,6 +537,7 @@ function suppForm(){
   const s = ui.editSupp;
   return `<section class="card">
     <h2>${s.isNew ? 'Add supplement' : 'Edit supplement'}</h2>
+    <div class="actions2"><button class="btn ghost" data-action="scanSupp">Scan barcode</button><button class="btn ghost" data-action="photoSupp">Photo of label</button></div>
     <label class="fld">Name<input type="text" id="sName" value="${esc(s.name)}" placeholder="Vitamin D3"></label>
     <label class="fld">Dose<input type="text" id="sDose" value="${esc(s.dose)}" placeholder="1 softgel"></label>
     <div class="fld"><span>When</span><div class="chips">${TIMES.map(t => `<label class="chip"><input type="checkbox" name="sTime" value="${t}" ${s.times.includes(t) ? 'checked' : ''}><span>${t}</span></label>`).join('')}</div></div>
@@ -545,6 +553,7 @@ function suppForm(){
     </div>
     <label class="fld">Notes<input type="text" id="sNotes" value="${esc(s.notes)}" placeholder="Take with a fat-containing meal"></label>
     <label class="fld" style="flex-direction:row;align-items:center;gap:8px;font-weight:500"><input type="checkbox" id="sActive" ${s.active !== false ? 'checked' : ''}> Currently taking</label>
+    ${s.raw ? `<details><summary>Text read from photo</summary><pre class="raw">${esc(s.raw)}</pre></details>` : ''}
     <div class="btns"><button class="btn" data-action="saveSupp">Save supplement</button><button class="btn ghost" data-action="cancelSupp">Cancel</button>${s.isNew ? '' : '<button class="btn danger" data-action="delSupp">Delete</button>'}</div>
   </section>`;
 }
@@ -672,6 +681,242 @@ function render(){
   $('#main').innerHTML = body + `<footer class="ver">Fuel Log ${VERSION}</footer>`;
 }
 
+/* ---------- barcode scanner, label reader ---------- */
+const LIB_SCAN = 'https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js';
+const LIB_OCR = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+const libs = {};
+function loadScript(src){
+  if(!libs[src]) libs[src] = new Promise((res, rej) => {
+    const el = document.createElement('script'); el.src = src; el.async = true;
+    el.onload = () => res();
+    el.onerror = () => { delete libs[src]; el.remove(); rej(new Error('Could not load the scanner tools. Check your connection.')); };
+    document.head.appendChild(el);
+  });
+  return libs[src];
+}
+let qr = null, scanTarget = 'food', ocrTarget = 'food', ocrRun = 0;
+function scanConfig(){
+  const F = Html5QrcodeSupportedFormats;
+  return {formatsToSupport:[F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E], verbose:false};
+}
+function showOverlay(html){ const o = $('#overlay'); o.innerHTML = `<div class="sheet" role="dialog" aria-modal="true">${html}</div>`; o.hidden = false; }
+function setStatus(t){ const el = $('#ovStatus'); if(el) el.textContent = t; }
+async function stopCamera(){
+  if(!qr) return;
+  const q = qr; qr = null;
+  try{ if(q.isScanning) await q.stop(); q.clear(); }catch(e){}
+}
+async function hideOverlay(){ await stopCamera(); const o = $('#overlay'); o.hidden = true; o.innerHTML = ''; }
+
+async function openScanner(target){
+  scanTarget = target;
+  showOverlay(`<h2>Scan barcode</h2><div id="reader"></div>
+    <p class="hint" id="ovStatus" aria-live="polite">Starting camera…</p>
+    <div class="btns"><button class="btn ghost" data-action="barcodePhoto">Use a photo instead</button><button class="btn ghost" data-action="closeScan">Cancel</button></div>
+    <form class="searchbar" id="codeForm" style="margin-top:12px"><input type="text" id="codeIn" inputmode="numeric" placeholder="Or type the barcode number" aria-label="Barcode number"><button class="btn" type="submit">Look up</button></form>`);
+  try{
+    await loadScript(LIB_SCAN);
+    if($('#overlay').hidden) return;
+    qr = new Html5Qrcode('reader', scanConfig());
+    let done = false;
+    await qr.start({facingMode:'environment'},
+      {fps:10, qrbox:(w, h) => ({width:Math.floor(Math.min(w * 0.9, 340)), height:Math.floor(Math.min(h * 0.45, 170))})},
+      code => { if(done) return; done = true; handleCode(code); }, () => {});
+    setStatus('Hold the barcode inside the box.');
+  }catch(e){
+    const m = String((e && e.message) || e);
+    setStatus(/permission|notallowed/i.test(m) ? 'Camera access is blocked. Allow camera access for this site, or use a photo or type the number below.'
+      : m.includes('Could not load') ? m : 'Could not start the camera. Use a photo or type the number below.');
+  }
+}
+async function handleCode(raw){
+  const code = String(raw || '').replace(/\D/g, '');
+  await stopCamera();
+  if(code.length < 8){ setStatus('That barcode could not be read. Try a photo or type the number.'); return; }
+  setStatus(`Looking up ${code}…`);
+  try{
+    const res = await lookupBarcode(code);
+    if(!res){ setStatus(`${code} is not in the food databases. Close this and use Photo of label instead.`); return; }
+    await hideOverlay();
+    const label = res.food.name + (res.food.brand ? ` (${res.food.brand})` : '');
+    if(scanTarget === 'supp'){
+      applyToSupp(res.servingN, label, res.servingLabel, '');
+      toast(res.servingN ? 'Check the values against the label' : 'Found the name only. Use Photo of label for nutrients.');
+    } else {
+      ui.tab = 'food'; ui.results = []; ui.err = ''; ui.label = null; selectFood(res.food);
+      toast(`Found ${res.food.name}`);
+    }
+    render();
+  }catch(e){
+    setStatus(e instanceof TypeError ? 'Could not reach the food databases. Check your connection.' : e.message);
+  }
+}
+
+const OFF_MAP = [['kcal','energy-kcal',1],['protein','proteins',1],['fat','fat',1],['carbs','carbohydrates',1],['fiber','fiber',1],
+  ['sodium','sodium',1e3],['potassium','potassium',1e3],['magnesium','magnesium',1e3],['calcium','calcium',1e3],['iron','iron',1e3],['zinc','zinc',1e3],
+  ['vitd','vitamin-d',1e6],['vitc','vitamin-c',1e3],['b12','vitamin-b12',1e6],['folate','folates',1e6],['vita','vitamin-a',1e6],['vitk','vitamin-k',1e6]];
+function offVals(n, suffix){
+  const o = zero(); let any = false;
+  OFF_MAP.forEach(([k, key, f]) => { const v = Number(n[key + suffix]); if(isFinite(v) && v > 0){ o[k] = v * f; any = true; } });
+  const epa = Number(n['eicosapentaenoic-acid' + suffix]) || 0, dha = Number(n['docosahexaenoic-acid' + suffix]) || 0;
+  if(epa + dha > 0){ o.omega3 = (epa + dha) * 1000; any = true; }
+  if(!o.kcal){ const kj = Number(n['energy' + suffix]); if(kj > 0) o.kcal = kj / 4.184; }
+  return any ? o : null;
+}
+function parseOFF(p, code){
+  const n = p.nutriments || {};
+  const per = offVals(n, '_100g'), serv = offVals(n, '_serving');
+  const name = titleCase(p.product_name || 'Scanned product'), brand = titleCase(String(p.brands || '').split(',')[0]);
+  if(!per && !serv) return {food:{id:'off' + code, name, brand, type:'Open Food Facts', per100:zero(), units:[{label:'grams', g:1}]}, servingN:null, servingLabel:p.serving_size || '', empty:true};
+  const sq = Number(p.serving_quantity);
+  let food;
+  if(per){
+    const units = [{label:'grams', g:1}, {label:'ounces', g:28.3495}];
+    if(sq > 0) units.push({label:`serving${p.serving_size ? ' · ' + p.serving_size : ''} (${r1(sq)} g)`, g:sq, serving:true});
+    food = {id:'off' + code, name, brand, type:'Open Food Facts', per100:per, units};
+  } else {
+    food = {id:'off' + code, name, brand, type:'Open Food Facts', per100:serv, units:[{label:`serving${p.serving_size ? ' · ' + p.serving_size : ''}`, g:100, serving:true}]};
+  }
+  return {food, servingN: serv || (per && sq > 0 ? scaled(food, sq) : null), servingLabel:p.serving_size || ''};
+}
+async function lookupBarcode(code){
+  let nameOnly = null;
+  const tries = [code]; if(code.length === 12) tries.push('0' + code);
+  for(const c of tries){
+    const r = await fetch(`https://world.openfoodfacts.org/api/v2/product/${c}.json?fields=product_name,brands,nutriments,serving_size,serving_quantity`);
+    if(!r.ok) continue;
+    const d = await r.json();
+    if(d.status === 1 && d.product){
+      const out = parseOFF(d.product, c);
+      if(!out.empty) return out;
+      nameOnly = out;
+    }
+  }
+  try{
+    const r = await fetch(`https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${encodeURIComponent(S.settings.apiKey || 'DEMO_KEY')}`, {
+      method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({query:code, dataType:['Branded'], pageSize:10})});
+    if(r.ok){
+      const d = await r.json();
+      const strip = v => String(v || '').replace(/^0+/, '');
+      const hit = (d.foods || []).find(f => strip(f.gtinUpc) === strip(code));
+      if(hit){
+        const food = parseFood(hit); const sv = food.units.find(u => u.serving);
+        return {food, servingN: sv ? scaled(food, sv.g) : null, servingLabel: sv ? sv.label : ''};
+      }
+    }
+  }catch(e){}
+  if(nameOnly && scanTarget === 'supp') return nameOnly;
+  return null;
+}
+function applyToSupp(n, name, serving, raw){
+  const s = ui.editSupp; if(!s) return;
+  if(name && !s.name.trim()) s.name = name;
+  if(serving && !s.dose.trim()) s.dose = serving;
+  if(n){
+    const rows = [];
+    NUTR.forEach(d => { const v = n[d.k]; if(v > 0) rows.push({k:d.k, amt:String(Math.round(v * 100) / 100), u:d.unit}); });
+    if(rows.length) s.nuts = rows;
+  }
+  s.raw = raw || '';
+}
+
+async function prepImage(file){
+  const url = URL.createObjectURL(file);
+  try{
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error('That photo could not be opened.')); i.src = url; });
+    const sc = Math.min(1, 1800 / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement('canvas'); c.width = Math.round(img.naturalWidth * sc); c.height = Math.round(img.naturalHeight * sc);
+    const x = c.getContext('2d'); x.drawImage(img, 0, 0, c.width, c.height);
+    const d = x.getImageData(0, 0, c.width, c.height), p = d.data;
+    for(let i = 0; i < p.length; i += 4){
+      let g = 0.299*p[i] + 0.587*p[i+1] + 0.114*p[i+2];
+      g = Math.max(0, Math.min(255, (g - 128) * 1.5 + 128));
+      p[i] = p[i+1] = p[i+2] = g;
+    }
+    x.putImageData(d, 0, 0);
+    return c;
+  } finally { URL.revokeObjectURL(url); }
+}
+const OCR_FIELDS = [
+  ['fat',['total\\s*fat']], ['protein',['\\bprotein']], ['carbs',['total\\s*carb\\w*\\.?','\\bcarbohydrates?\\b']], ['fiber',['dietary\\s*fib\\w*','\\bfib(?:er|re)\\b']],
+  ['sodium',['\\bsodium\\b']], ['potassium',['\\bpotassium\\b']], ['magnesium',['\\bmagnesium\\b']], ['calcium',['\\bcalcium\\b']], ['iron',['\\biron\\b']], ['zinc',['\\bzinc\\b']],
+  ['vitd',['vitamin\\s*d\\d?\\b']], ['vitc',['vitamin\\s*c\\b']], ['b12',['vitamin\\s*b\\s?-?\\s?12','\\bb\\s?-?12\\b']], ['folate',['\\bfolate\\b','folic\\s*acid']],
+  ['vita',['vitamin\\s*a\\b']], ['vitk',['vitamin\\s*k\\d?\\b']], ['epa',['\\bepa\\b','eicosapentaenoic']], ['dha',['\\bdha\\b','docosahexaenoic']]
+];
+const UNIT_F = {g:1e6, mg:1e3, mcg:1};
+function toUnit(v, u, key, target){
+  if(u === 'iu'){ if(key === 'vitd') return v / 40; if(key === 'vita') return v * 0.3; return null; }
+  return v * UNIT_F[u] / UNIT_F[target];
+}
+function parseLabel(text){
+  const t = text.replace(/[µμ]g/gi, 'mcg').replace(/(\d|\b)(meg|mcq|mog|ug)\b/gi, '$1mcg')
+    .replace(/\bO(\s?m?c?g)\b/g, '0$1').replace(/(\d),(\d{3})\b/g, '$1$2');
+  const n = zero(), extra = {}; let found = 0;
+  const amt = '(\\d+(?:\\.\\d+)?)\\s*(mcg|mg|g|iu)\\b';
+  OCR_FIELDS.forEach(([k, pats]) => {
+    const target = (k === 'epa' || k === 'dha') ? 'mg' : NMAP[k].unit;
+    for(const p of pats){
+      const m = new RegExp(p + '[^\\n]{0,50}?' + amt, 'i').exec(t) || new RegExp(p + '[\\s\\S]{0,25}?' + amt, 'i').exec(t);
+      if(!m) continue;
+      const v = toUnit(parseFloat(m[1]), m[2].toLowerCase(), k, target);
+      if(v != null){ if(k === 'epa' || k === 'dha') extra[k] = v; else n[k] = v; found++; }
+      break;
+    }
+  });
+  if(extra.epa || extra.dha) n.omega3 = (extra.epa || 0) + (extra.dha || 0);
+  const cm = /calories[^\n\d]{0,20}(\d{1,4})\b/i.exec(t); if(cm){ n.kcal = +cm[1]; found++; }
+  const sm = /serving\s*size[:\s]*([^\n]{1,40})/i.exec(t);
+  const serving = sm ? sm[1].trim() : '';
+  const gm = serving ? /(\d+(?:\.\d+)?)\s*(g|ml)\b/i.exec(serving) : null;
+  return {n, found, serving, servG: gm ? parseFloat(gm[1]) : 0, raw: text.trim()};
+}
+async function runOCR(file, target){
+  const run = ++ocrRun;
+  showOverlay(`<h2>Reading label</h2><p class="hint" id="ovStatus" aria-live="polite">Preparing photo…</p>
+    <p class="hint">The first scan downloads the text reader, which can take 20 to 30 seconds.</p>
+    <div class="btns"><button class="btn ghost" data-action="closeScan">Cancel</button></div>`);
+  try{
+    const canvas = await prepImage(file);
+    setStatus('Loading text reader…');
+    await loadScript(LIB_OCR);
+    const {data} = await Tesseract.recognize(canvas, 'eng', {logger: m => { if(run === ocrRun && m.status === 'recognizing text') setStatus(`Reading label ${Math.round((m.progress || 0) * 100)}%`); }});
+    if(run !== ocrRun) return;
+    const parsed = parseLabel(data.text || '');
+    await hideOverlay();
+    if(target === 'supp'){
+      applyToSupp(parsed.found ? parsed.n : null, '', parsed.serving, parsed.raw);
+      toast(parsed.found ? 'Check the values against the label' : 'No nutrients recognized. Enter them by hand.');
+    } else {
+      ui.tab = 'food'; ui.sel = null; ui.results = []; ui.err = '';
+      ui.label = {fromScan:true, name:'', serving:parsed.serving, servG:parsed.servG, n:parsed.n, raw:parsed.raw};
+      toast(parsed.found >= 3 ? 'Check the values against the label' : 'Few values recognized. Fill in the rest by hand.');
+    }
+    render();
+  }catch(e){
+    if(run === ocrRun) setStatus((e && e.message) || 'Could not read the photo. Try again with better light.');
+  }
+}
+function labelFormHTML(){
+  const L = ui.label;
+  const fld = (k, label) => `<label class="fld">${label}<input type="number" inputmode="decimal" step="any" id="lf_${k}" value="${L.n[k] ? r1(L.n[k]) : ''}"></label>`;
+  const microKeys = MICRO_KEYS.filter(k => k !== 'sodium');
+  const anyMicro = microKeys.some(k => L.n[k] > 0);
+  return `<div class="card" style="background:var(--bg)">
+    <h3>${L.fromScan ? 'Check the label values' : 'Custom food'}</h3>
+    <p class="hint">${L.fromScan ? 'Read from your photo. Fix anything that looks off. Blank means it was not found.' : 'Enter the values for one serving.'}</p>
+    <label class="fld">Name<input type="text" id="lf_name" value="${esc(L.name)}" placeholder="Product name"></label>
+    <div class="grid2">
+      <label class="fld">Serving<input type="text" id="lf_serving" value="${esc(L.serving)}" placeholder="2 tbsp"></label>
+      <label class="fld">Serving grams<input type="number" inputmode="decimal" step="any" id="lf_servG" value="${L.servG || ''}" placeholder="Optional"></label>
+    </div>
+    <div class="grid3">${fld('kcal','Calories')}${fld('protein','Protein g')}${fld('fat','Fat g')}${fld('carbs','Carbs g')}${fld('fiber','Fiber g')}${fld('sodium','Sodium mg')}</div>
+    <details ${anyMicro ? 'open' : ''}><summary>Vitamins and minerals</summary>
+      <div class="grid2">${microKeys.map(k => fld(k, `${NMAP[k].label} ${NMAP[k].unit}`)).join('')}</div></details>
+    ${L.raw ? `<details><summary>Text read from photo</summary><pre class="raw">${esc(L.raw)}</pre></details>` : ''}
+    <div class="btns"><button class="btn" data-action="saveLabel">Save and choose amount</button><button class="btn ghost" data-action="cancelLabel">Cancel</button></div>
+  </div>`;
+}
+
 /* ---------- actions ---------- */
 function shiftDay(n){ const d = parseKey(ui.date); d.setDate(d.getDate() + n); ui.date = dkey(d); ui.sel = null; }
 function selectFood(food){
@@ -702,18 +947,31 @@ const A = {
     ui.sel = null; ui.results = []; ui.q = ''; save(); toast(`Added to ${ui.meal}`);
   },
   delFood: el => { const d = day(ui.date); d.food = d.food.filter(f => f.id !== el.dataset.id); save(); },
-  toggleCustom: () => { ui.custom = !ui.custom; },
-  saveCustom: () => {
-    const name = $('#cName').value.trim(); if(!name){ toast('Give the food a name.'); return false; }
-    const v = id => Number($(id).value) || 0;
-    const p = zero(); p.protein = v('#cP'); p.fat = v('#cF'); p.carbs = v('#cC'); p.fiber = v('#cFi'); p.sodium = v('#cNa');
-    p.kcal = v('#cKcal') || (4*p.protein + 4*p.carbs + 9*p.fat);
-    const serv = $('#cServ').value.trim() || 'serving';
-    const food = {id:'custom' + uid(), name, brand:'', type:'Custom', per100:p, units:[{label:serv, g:100, serving:true}]};
-    day(ui.date).food.push({id:uid(), meal:ui.meal, name, amount:`1 × ${serv}`, n:scaled(food, 100), foodId:food.id, t:Date.now()});
-    S.library[food.id] = {...food, lastUsed:Date.now(), lastUnit:0, lastQty:1, lastAmount:`1 × ${serv}`};
-    ui.custom = false; save(); toast(`Added to ${ui.meal}`);
+  scanFood: () => { ui.label = null; openScanner('food'); return false; },
+  photoFood: () => { ocrTarget = 'food'; $('#labelFile').click(); return false; },
+  customFood: () => { ui.sel = null; ui.results = []; ui.err = ''; ui.label = {fromScan:false, name:'', serving:'', servG:0, n:zero(), raw:''}; },
+  cancelLabel: () => { ui.label = null; },
+  saveLabel: () => {
+    const name = $('#lf_name').value.trim(); if(!name){ toast('Give the food a name.'); return false; }
+    const serving = $('#lf_serving').value.trim() || 'serving';
+    const servG = Number($('#lf_servG').value) || 0;
+    const n = zero(); NUTR.forEach(d => { const el = $('#lf_' + d.k); n[d.k] = el ? (Number(el.value) || 0) : 0; });
+    if(!n.kcal) n.kcal = 4*n.protein + 4*n.carbs + 9*n.fat;
+    const type = ui.label.fromScan ? 'From label photo' : 'Custom';
+    let food;
+    if(servG > 0){
+      const per = zero(); NUTR.forEach(d => per[d.k] = n[d.k] * 100 / servG);
+      food = {id:'custom' + uid(), name, brand:'', type, per100:per, units:[{label:`serving · ${serving} (${r1(servG)} g)`, g:servG, serving:true}, {label:'grams', g:1}, {label:'ounces', g:28.3495}]};
+    } else {
+      food = {id:'custom' + uid(), name, brand:'', type, per100:n, units:[{label:serving, g:100, serving:true}]};
+    }
+    S.library[food.id] = {...food, lastUsed:Date.now()}; save();
+    ui.label = null; selectFood(food); toast('Saved. Choose the amount.');
   },
+  scanSupp: () => { syncSuppForm(); openScanner('supp'); return false; },
+  photoSupp: () => { syncSuppForm(); ocrTarget = 'supp'; $('#labelFile').click(); return false; },
+  barcodePhoto: () => { $('#barcodeFile').click(); return false; },
+  closeScan: () => { ocrRun++; hideOverlay(); return false; },
   water: el => { day(ui.date).water.push({id:uid(), oz:+el.dataset.oz, t:Date.now()}); save(); },
   waterCustom: () => { const oz = Number($('#wCustom').value); if(!(oz > 0)){ toast('Enter ounces greater than zero.'); return false; } day(ui.date).water.push({id:uid(), oz, t:Date.now()}); save(); },
   delWater: el => { const d = day(ui.date); d.water = d.water.filter(w => w.id !== el.dataset.id); save(); },
@@ -768,6 +1026,7 @@ document.addEventListener('click', e => {
 });
 document.addEventListener('submit', e => {
   if(e.target.id === 'searchForm'){ e.preventDefault(); ui.q = $('#q').value; doSearch(); }
+  if(e.target.id === 'codeForm'){ e.preventDefault(); handleCode($('#codeIn').value); }
 });
 document.addEventListener('input', e => {
   if(e.target.id === 'q') ui.q = e.target.value;
@@ -809,6 +1068,24 @@ $('#importFile').addEventListener('change', e => {
   r.readAsText(file);
 });
 document.addEventListener('visibilitychange', () => { if(!document.hidden) render(); });
+
+$('#labelFile').addEventListener('change', e => {
+  const file = e.target.files[0]; e.target.value = '';
+  if(file) runOCR(file, ocrTarget);
+});
+$('#barcodeFile').addEventListener('change', async e => {
+  const file = e.target.files[0]; e.target.value = '';
+  if(!file) return;
+  setStatus('Reading barcode from photo…');
+  try{
+    await loadScript(LIB_SCAN);
+    await stopCamera();
+    const tmp = new Html5Qrcode('reader', scanConfig());
+    const code = await tmp.scanFile(file, false);
+    try{ tmp.clear(); }catch(_){}
+    handleCode(code);
+  }catch(err){ setStatus('No barcode found in that photo. Try a closer, sharper photo, or type the number below.'); }
+});
 
 applyTheme();
 render();
