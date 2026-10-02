@@ -185,7 +185,7 @@ nav.tabs button.on::before{content:"";position:absolute;top:0;left:22%;right:22%
 <div id="overlay" hidden></div>
 
 <script>
-const VERSION = 'v1.1';
+const VERSION = 'v1.2';
 const STORE = 'fuelLog.v1';
 
 const NUTR = [
@@ -260,7 +260,7 @@ function save(){
 function day(k){ return S.days[k] || (S.days[k] = {food:[], water:[], supps:{}}); }
 function autoMeal(){ const h = new Date().getHours(); return h < 11 ? 'Breakfast' : h < 15 ? 'Lunch' : h < 20 ? 'Dinner' : 'Snacks'; }
 
-const ui = {tab:'dash', date:dkey(new Date()), q:'', filter:'whole', results:[], searching:false, err:'', sel:null, meal:autoMeal(), label:null, editSupp:null};
+const ui = {tab:'dash', date:dkey(new Date()), q:'', filter:'whole', results:[], searching:false, err:'', sel:null, meal:autoMeal(), label:null, editSupp:null, histSort:'recent', histAll:false};
 
 function applyTheme(){
   const t = S.settings.theme;
@@ -470,15 +470,12 @@ function renderFood(){
   } else if(ui.searching){
     picker = `<p class="empty">Searching…</p>`;
   } else if(ui.results.length){
-    picker = `<ul class="list">${ui.results.map((f, i) => `<li><button class="pick" data-action="pickResult" data-i="${i}">
+    const mine = myFoods(ui.q, 'recent').slice(0, 5);
+    picker = (mine.length ? `<h3 style="margin-top:4px">My foods</h3><ul class="list">${foodItems(mine)}</ul><h3 style="margin-top:14px">Database</h3>` : '') + `<ul class="list">${ui.results.map((f, i) => `<li><button class="pick" data-action="pickResult" data-i="${i}">
       <div class="t">${esc(f.name)}</div><div class="m">${esc([f.brand, f.type].filter(Boolean).join(' · '))} · per 100 g: ${r0(f.per100.kcal)} kcal, P ${r0(f.per100.protein)} F ${r0(f.per100.fat)} C ${r0(f.per100.carbs)}</div></button></li>`).join('')}</ul>
       <button class="btn ghost wide" style="margin-top:8px" data-action="clearResults">Clear results</button>`;
   } else {
-    const recents = Object.values(S.library).sort((a, b) => (b.lastUsed||0) - (a.lastUsed||0)).slice(0, 20);
-    picker = recents.length ? `<h3 style="margin-top:4px">Recent foods</h3><ul class="list">${recents.map(f => `<li>
-      <button class="pick" data-action="pickRecent" data-id="${esc(f.id)}"><div class="t">${esc(f.name)}</div><div class="m">${esc(f.lastAmount || '')}</div></button>
-      <button class="icon" data-action="forgetFood" data-id="${esc(f.id)}" aria-label="Remove from recent">×</button></li>`).join('')}</ul>`
-      : `<p class="empty">Search for a food above. Foods you log show up here for one-tap re-adding.</p>`;
+    picker = `<h3 style="margin-top:4px">My foods</h3><div id="myFoods">${myFoodsHTML()}</div>`;
   }
 
   if(ui.label) picker = labelFormHTML();
@@ -898,11 +895,11 @@ async function runOCR(file, target){
 }
 function labelFormHTML(){
   const L = ui.label;
-  const fld = (k, label) => `<label class="fld">${label}<input type="number" inputmode="decimal" step="any" id="lf_${k}" value="${L.n[k] ? r1(L.n[k]) : ''}"></label>`;
+  const fld = (k, label) => `<label class="fld">${label}<input type="number" inputmode="decimal" step="any" id="lf_${k}" value="${L.n[k] ? Math.round(L.n[k] * 100) / 100 : ''}"></label>`;
   const microKeys = MICRO_KEYS.filter(k => k !== 'sodium');
   const anyMicro = microKeys.some(k => L.n[k] > 0);
   return `<div class="card" style="background:var(--bg)">
-    <h3>${L.fromScan ? 'Check the label values' : 'Custom food'}</h3>
+    <h3>${L.editId ? 'Edit custom food' : L.fromScan ? 'Check the label values' : 'Custom food'}</h3>
     <p class="hint">${L.fromScan ? 'Read from your photo. Fix anything that looks off. Blank means it was not found.' : 'Enter the values for one serving.'}</p>
     <label class="fld">Name<input type="text" id="lf_name" value="${esc(L.name)}" placeholder="Product name"></label>
     <div class="grid2">
@@ -913,8 +910,69 @@ function labelFormHTML(){
     <details ${anyMicro ? 'open' : ''}><summary>Vitamins and minerals</summary>
       <div class="grid2">${microKeys.map(k => fld(k, `${NMAP[k].label} ${NMAP[k].unit}`)).join('')}</div></details>
     ${L.raw ? `<details><summary>Text read from photo</summary><pre class="raw">${esc(L.raw)}</pre></details>` : ''}
-    <div class="btns"><button class="btn" data-action="saveLabel">Save and choose amount</button><button class="btn ghost" data-action="cancelLabel">Cancel</button></div>
+    <div class="btns"><button class="btn" data-action="saveLabel">${L.editId ? 'Save changes' : 'Save and choose amount'}</button><button class="btn ghost" data-action="cancelLabel">Cancel</button></div>
   </div>`;
+}
+
+/* ---------- food history ---------- */
+const isCustom = f => String(f.id).startsWith('custom');
+function myFoods(q, sort){
+  const term = String(q || '').trim().toLowerCase();
+  let list = Object.values(S.library);
+  if(term) list = list.filter(f => `${f.name} ${f.brand || ''}`.toLowerCase().includes(term));
+  if(sort === 'used') list.sort((a, b) => (b.count || 0) - (a.count || 0) || (b.lastUsed || 0) - (a.lastUsed || 0));
+  else if(sort === 'custom') list = list.filter(isCustom).sort((a, b) => a.name.localeCompare(b.name));
+  else list.sort((a, b) => (b.lastUsed || 0) - (a.lastUsed || 0));
+  return list;
+}
+function foodItems(list){
+  return list.map(f => {
+    const meta = [f.lastAmount ? `last: ${f.lastAmount}` : '', f.count ? `logged ${f.count}×` : '', isCustom(f) ? 'custom' : ''].filter(Boolean).join(' · ');
+    return `<li><button class="pick" data-action="pickRecent" data-id="${esc(f.id)}"><div class="t">${esc(f.name)}${f.brand ? ` <span class="m">${esc(f.brand)}</span>` : ''}</div><div class="m">${esc(meta || 'saved')}</div></button>
+      ${isCustom(f) ? `<button class="icon" data-action="editFood" data-id="${esc(f.id)}" aria-label="Edit ${esc(f.name)}">✎</button>` : ''}
+      <button class="icon" data-action="forgetFood" data-id="${esc(f.id)}" aria-label="Remove ${esc(f.name)}">×</button></li>`;
+  }).join('');
+}
+function myFoodsHTML(){
+  if(!Object.keys(S.library).length) return `<p class="empty">Foods you log or save show up here for one-tap re-adding.</p>`;
+  const all = myFoods(ui.q, ui.histSort);
+  const shown = all.slice(0, ui.histAll ? 300 : 15);
+  const seg = `<div class="seg" role="group" aria-label="Sort my foods">${[['recent','Recent'],['used','Most used'],['custom','My custom']].map(([k, l]) => `<button data-action="histSort" data-s="${k}" class="${ui.histSort === k ? 'on' : ''}" aria-pressed="${ui.histSort === k}">${l}</button>`).join('')}</div>`;
+  const body = shown.length ? `<ul class="list">${foodItems(shown)}</ul>`
+    : `<p class="empty">${ui.q.trim() ? 'No saved foods match. Tap Search to check the database.' : 'No custom foods yet.'}</p>`;
+  const more = all.length > shown.length ? `<button class="btn ghost wide" style="margin-top:8px" data-action="histAll">Show all ${all.length}</button>` : '';
+  return seg + body + more;
+}
+function deriveLabel(f){
+  const u0 = f.units[0];
+  if(u0 && u0.serving && f.units.some(u => u.label === 'grams')){
+    const m = /^serving · (.*) \([\d.]+ g\)$/.exec(u0.label);
+    return {serving: m ? m[1] : u0.label, servG:u0.g, n:scaled(f, u0.g)};
+  }
+  return {serving: u0 ? u0.label : 'serving', servG:0, n:{...f.per100}};
+}
+
+/* ---------- drafts: keep unsaved form input ---------- */
+const DRAFT = 'fuelLog.draft.v1';
+let draftTimer;
+function syncLabelForm(){
+  const L = ui.label; if(!L || !$('#lf_name')) return;
+  L.name = $('#lf_name').value; L.serving = $('#lf_serving').value; L.servG = Number($('#lf_servG').value) || 0;
+  NUTR.forEach(d => { const el = $('#lf_' + d.k); if(el) L.n[d.k] = Number(el.value) || 0; });
+}
+function syncForms(){ syncLabelForm(); syncSuppForm(); }
+function saveDraft(){
+  try{ localStorage.setItem(DRAFT, JSON.stringify({t:Date.now(), tab:ui.tab, date:ui.date, meal:ui.meal, q:ui.q, label:ui.label, editSupp:ui.editSupp, sel:ui.sel, histSort:ui.histSort})); }catch(e){}
+}
+function queueDraft(){ clearTimeout(draftTimer); draftTimer = setTimeout(saveDraft, 300); }
+function loadDraft(){
+  try{
+    const d = JSON.parse(localStorage.getItem(DRAFT) || 'null');
+    if(!d || Date.now() - d.t > 3 * 864e5) return;
+    ui.tab = d.tab || ui.tab; ui.q = d.q || ''; ui.label = d.label || null; ui.editSupp = d.editSupp || null;
+    ui.sel = d.sel || null; ui.histSort = d.histSort || 'recent';
+    if(Date.now() - d.t < 6 * 36e5){ if(d.date) ui.date = d.date; if(d.meal) ui.meal = d.meal; }
+  }catch(e){}
 }
 
 /* ---------- actions ---------- */
@@ -925,7 +983,7 @@ function selectFood(food){
   if(food.lastUnit != null && food.units[food.lastUnit]){ ui.sel.unit = food.lastUnit; ui.sel.qty = food.lastQty; }
 }
 const A = {
-  tab: el => { if(ui.tab === 'supps') ui.editSupp = null; ui.tab = el.dataset.tab; window.scrollTo(0, 0); },
+  tab: el => { ui.tab = el.dataset.tab; window.scrollTo(0, 0); },
   prevDay: () => shiftDay(-1),
   nextDay: () => shiftDay(1),
   today: () => { ui.date = dkey(new Date()); },
@@ -934,7 +992,11 @@ const A = {
   filter: el => { ui.filter = el.dataset.f; ui.results = []; ui.err = ''; ui.sel = null; },
   pickResult: el => selectFood(ui.results[+el.dataset.i]),
   pickRecent: el => { const f = S.library[el.dataset.id]; if(f) selectFood(f); },
-  forgetFood: el => { delete S.library[el.dataset.id]; save(); },
+  forgetFood: el => {
+    const f = S.library[el.dataset.id]; if(!f) return false;
+    if(isCustom(f) && !confirm(`Delete ${f.name}? It is a custom food, so it cannot be found again by search.`)) return false;
+    delete S.library[el.dataset.id]; save();
+  },
   cancelSel: () => { ui.sel = null; },
   clearResults: () => { ui.results = []; ui.err = ''; },
   addFood: () => {
@@ -943,7 +1005,8 @@ const A = {
     const u = s.food.units[s.unit];
     const amount = u.label === 'grams' ? `${r1(qty)} g` : u.label === 'ounces' ? `${r1(qty)} oz` : u.label === 'serving' ? `${r1(qty)} serving${qty === 1 ? '' : 's'}` : `${r1(qty)} × ${u.label}`;
     day(ui.date).food.push({id:uid(), meal:ui.meal, name:s.food.name + (s.food.brand ? ` (${s.food.brand})` : ''), amount, n:scaled(s.food, qty * u.g), foodId:s.food.id, t:Date.now()});
-    S.library[s.food.id] = {...s.food, lastUsed:Date.now(), lastUnit:s.unit, lastQty:qty, lastAmount:amount};
+    const prevF = S.library[s.food.id];
+    S.library[s.food.id] = {...s.food, labelData:(prevF && prevF.labelData) || s.food.labelData, count:((prevF && prevF.count) || 0) + 1, lastUsed:Date.now(), lastUnit:s.unit, lastQty:qty, lastAmount:amount};
     ui.sel = null; ui.results = []; ui.q = ''; save(); toast(`Added to ${ui.meal}`);
   },
   delFood: el => { const d = day(ui.date); d.food = d.food.filter(f => f.id !== el.dataset.id); save(); },
@@ -952,22 +1015,42 @@ const A = {
   customFood: () => { ui.sel = null; ui.results = []; ui.err = ''; ui.label = {fromScan:false, name:'', serving:'', servG:0, n:zero(), raw:''}; },
   cancelLabel: () => { ui.label = null; },
   saveLabel: () => {
-    const name = $('#lf_name').value.trim(); if(!name){ toast('Give the food a name.'); return false; }
-    const serving = $('#lf_serving').value.trim() || 'serving';
-    const servG = Number($('#lf_servG').value) || 0;
-    const n = zero(); NUTR.forEach(d => { const el = $('#lf_' + d.k); n[d.k] = el ? (Number(el.value) || 0) : 0; });
+    const L = ui.label;
+    const name = String(L.name || '').trim(); if(!name){ toast('Give the food a name.'); return false; }
+    const serving = String(L.serving || '').trim() || 'serving';
+    const servG = Number(L.servG) || 0;
+    const n = zero(); NUTR.forEach(d => n[d.k] = Number(L.n[d.k]) || 0);
     if(!n.kcal) n.kcal = 4*n.protein + 4*n.carbs + 9*n.fat;
-    const type = ui.label.fromScan ? 'From label photo' : 'Custom';
+    const prev = L.editId ? S.library[L.editId] : null;
+    const type = prev ? prev.type : L.fromScan ? 'From label photo' : 'Custom';
+    const id = L.editId || 'custom' + uid();
     let food;
     if(servG > 0){
       const per = zero(); NUTR.forEach(d => per[d.k] = n[d.k] * 100 / servG);
-      food = {id:'custom' + uid(), name, brand:'', type, per100:per, units:[{label:`serving · ${serving} (${r1(servG)} g)`, g:servG, serving:true}, {label:'grams', g:1}, {label:'ounces', g:28.3495}]};
+      food = {id, name, brand:'', type, per100:per, units:[{label:`serving · ${serving} (${r1(servG)} g)`, g:servG, serving:true}, {label:'grams', g:1}, {label:'ounces', g:28.3495}]};
     } else {
-      food = {id:'custom' + uid(), name, brand:'', type, per100:n, units:[{label:serving, g:100, serving:true}]};
+      food = {id, name, brand:'', type, per100:n, units:[{label:serving, g:100, serving:true}]};
     }
-    S.library[food.id] = {...food, lastUsed:Date.now()}; save();
+    food.labelData = {serving, servG, n};
+    if(prev){
+      const keep = {count:prev.count, lastUsed:prev.lastUsed, lastAmount:prev.lastAmount};
+      if(prev.lastUnit != null && food.units[prev.lastUnit] && JSON.stringify(prev.units) === JSON.stringify(food.units)){ keep.lastUnit = prev.lastUnit; keep.lastQty = prev.lastQty; }
+      S.library[id] = {...food, ...keep}; save();
+      ui.label = null; toast('Changes saved. Past log entries keep their original values.');
+      return;
+    }
+    S.library[id] = {...food, lastUsed:Date.now()}; save();
     ui.label = null; selectFood(food); toast('Saved. Choose the amount.');
   },
+  editFood: el => {
+    const f = S.library[el.dataset.id]; if(!f) return false;
+    const ld = f.labelData || deriveLabel(f);
+    ui.sel = null; ui.results = []; ui.err = '';
+    ui.label = {editId:f.id, fromScan:false, name:f.name, serving:ld.serving, servG:ld.servG, n:{...zero(), ...ld.n}, raw:''};
+    window.scrollTo(0, 0);
+  },
+  histSort: el => { ui.histSort = el.dataset.s; ui.histAll = false; },
+  histAll: () => { ui.histAll = true; },
   scanSupp: () => { syncSuppForm(); openScanner('supp'); return false; },
   photoSupp: () => { syncSuppForm(); ocrTarget = 'supp'; $('#labelFile').click(); return false; },
   barcodePhoto: () => { $('#barcodeFile').click(); return false; },
@@ -1022,18 +1105,22 @@ document.addEventListener('click', e => {
   const el = e.target.closest('[data-action]'); if(!el) return;
   const fn = A[el.dataset.action]; if(!fn) return;
   e.preventDefault();
+  syncForms();
   if(fn(el, e) !== false) render();
+  queueDraft();
 });
 document.addEventListener('submit', e => {
   if(e.target.id === 'searchForm'){ e.preventDefault(); ui.q = $('#q').value; doSearch(); }
   if(e.target.id === 'codeForm'){ e.preventDefault(); handleCode($('#codeIn').value); }
 });
 document.addEventListener('input', e => {
-  if(e.target.id === 'q') ui.q = e.target.value;
+  if(e.target.id === 'q'){ ui.q = e.target.value; ui.histAll = false; const mf = $('#myFoods'); if(mf) mf.innerHTML = myFoodsHTML(); }
   if(e.target.id === 'qty' && ui.sel){ ui.sel.qty = e.target.value; $('#preview').innerHTML = previewHTML(); }
+  syncForms(); queueDraft();
 });
 document.addEventListener('change', e => {
   const t = e.target;
+  syncForms(); queueDraft();
   if(t.id === 'unit' && ui.sel){
     ui.sel.unit = +t.value;
     const u = ui.sel.food.units[ui.sel.unit];
@@ -1067,7 +1154,11 @@ $('#importFile').addEventListener('change', e => {
   };
   r.readAsText(file);
 });
-document.addEventListener('visibilitychange', () => { if(!document.hidden) render(); });
+document.addEventListener('visibilitychange', () => {
+  syncForms();
+  if(document.hidden) saveDraft(); else render();
+});
+window.addEventListener('pagehide', () => { syncForms(); saveDraft(); });
 
 $('#labelFile').addEventListener('change', e => {
   const file = e.target.files[0]; e.target.value = '';
@@ -1087,6 +1178,7 @@ $('#barcodeFile').addEventListener('change', async e => {
   }catch(err){ setStatus('No barcode found in that photo. Try a closer, sharper photo, or type the number below.'); }
 });
 
+loadDraft();
 applyTheme();
 render();
 </script>
