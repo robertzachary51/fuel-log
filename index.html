@@ -185,7 +185,7 @@ nav.tabs button.on::before{content:"";position:absolute;top:0;left:22%;right:22%
 <div id="overlay" hidden></div>
 
 <script>
-const VERSION = 'v1.2';
+const VERSION = 'v1.3';
 const STORE = 'fuelLog.v1';
 
 const NUTR = [
@@ -257,7 +257,7 @@ function save(){
   try{ localStorage.setItem(STORE, JSON.stringify(S)); }
   catch(e){ toast('Could not save. Phone storage may be full or blocked.'); }
 }
-function day(k){ return S.days[k] || (S.days[k] = {food:[], water:[], supps:{}}); }
+function day(k){ const d = S.days[k] || (S.days[k] = {food:[], water:[], supps:{}}); if(!d.extra) d.extra = []; return d; }
 function autoMeal(){ const h = new Date().getHours(); return h < 11 ? 'Breakfast' : h < 15 ? 'Lunch' : h < 20 ? 'Dinner' : 'Snacks'; }
 
 const ui = {tab:'dash', date:dkey(new Date()), q:'', filter:'whole', results:[], searching:false, err:'', sel:null, meal:autoMeal(), label:null, editSupp:null, histSort:'recent', histAll:false};
@@ -285,6 +285,10 @@ function totals(k){
   S.supplements.forEach(s => (s.times||[]).forEach(time => {
     if(d.supps && d.supps[s.id + '|' + time]) Object.entries(s.nutrients||{}).forEach(([nk, v]) => { if(nk in t) t[nk] += v; });
   }));
+  (d.extra||[]).forEach(x => {
+    const sp = S.supplements.find(q => q.id === x.suppId);
+    if(sp) Object.entries(sp.nutrients||{}).forEach(([nk, v]) => { if(nk in t) t[nk] += v; });
+  });
   t.water = (d.water||[]).reduce((a, w) => a + w.oz, 0);
   return t;
 }
@@ -292,7 +296,7 @@ function carbShown(t){ return S.settings.carbMode === 'net' ? Math.max(0, t.carb
 function scheduled(k){
   const dow = parseKey(k).getDay();
   const out = [];
-  S.supplements.filter(s => s.active !== false && (s.days||[]).includes(dow))
+  S.supplements.filter(s => s.active !== false && !s.asNeeded && (s.days||[]).includes(dow))
     .forEach(s => TIMES.forEach(time => { if((s.times||[]).includes(time)) out.push({s, time}); }));
   return out;
 }
@@ -384,12 +388,18 @@ function bar(label, val, target, unit, color, limit){
 function doseList(k){
   const list = scheduled(k);
   const d = S.days[k] || {supps:{}};
-  if(!list.length) return `<p class="empty">No supplements scheduled for this day. Add them on the Supplements tab.</p>`;
+  if(!list.length) return `<p class="empty">${S.supplements.length ? 'Nothing scheduled for this day.' : 'No supplements yet. Add them on the Supplements tab.'}</p>`;
   return `<div class="doses">${list.map(({s, time}) => {
     const on = !!(d.supps && d.supps[s.id + '|' + time]);
     return `<button class="dose ${on ? 'on' : ''}" data-action="toggleDose" data-id="${s.id}" data-time="${time}" aria-pressed="${on}">
       <span class="box">${on ? '✓' : ''}</span><span><span class="dname">${esc(s.name)}</span><br><span class="dmeta">${time}${s.dose ? ' · ' + esc(s.dose) : ''}</span></span></button>`;
   }).join('')}</div>`;
+}
+function extraSummary(k){
+  const d = S.days[k]; if(!d || !(d.extra||[]).length) return [];
+  const counts = {};
+  d.extra.forEach(x => counts[x.suppId] = (counts[x.suppId] || 0) + 1);
+  return Object.entries(counts).map(([id, c]) => { const sp = S.supplements.find(q => q.id === id); return sp ? {sp, c} : null; }).filter(Boolean);
 }
 function macroLine(n){
   return `<span class="macros-line">${r0(n.kcal)} kcal · P <b>${r0(n.protein)}</b> · F <b>${r0(n.fat)}</b> · C <b>${r0(S.settings.carbMode==='net' ? Math.max(0, n.carbs - n.fiber) : n.carbs)}</b>${S.settings.carbMode==='net' ? ' net' : ''}</span>`;
@@ -423,8 +433,9 @@ function renderDash(){
     ${bar('Water', t.water, S.settings.waterGoal, 'oz', 'var(--water)')}
   </section>
   <section class="card">
-    <h2>Supplements <span style="font-size:16px;color:var(--muted)">${taken} of ${sched.length} taken</span></h2>
+    <h2>Supplements <span style="font-size:16px;color:var(--muted)">${taken} of ${sched.length} scheduled taken</span></h2>
     ${doseList(ui.date)}
+    ${(() => { const ex = extraSummary(ui.date); return ex.length ? `<p class="hint" style="margin:12px 0 0"><b style="color:var(--ink)">As needed:</b> ${ex.map(x => `${esc(x.sp.name)} ×${x.c}`).join(', ')}</p>` : ''; })()}
   </section>
   <section class="card">
     <h2>Micronutrients</h2>
@@ -537,8 +548,11 @@ function suppForm(){
     <div class="actions2"><button class="btn ghost" data-action="scanSupp">Scan barcode</button><button class="btn ghost" data-action="photoSupp">Photo of label</button></div>
     <label class="fld">Name<input type="text" id="sName" value="${esc(s.name)}" placeholder="Vitamin D3"></label>
     <label class="fld">Dose<input type="text" id="sDose" value="${esc(s.dose)}" placeholder="1 softgel"></label>
-    <div class="fld"><span>When</span><div class="chips">${TIMES.map(t => `<label class="chip"><input type="checkbox" name="sTime" value="${t}" ${s.times.includes(t) ? 'checked' : ''}><span>${t}</span></label>`).join('')}</div></div>
-    <div class="fld"><span>Days</span><div class="chips">${DOW.map((d, i) => `<label class="chip"><input type="checkbox" name="sDay" value="${i}" ${s.days.includes(i) ? 'checked' : ''}><span>${d}</span></label>`).join('')}</div></div>
+    <div class="fld"><span>Schedule</span><div class="chips">
+      <label class="chip"><input type="radio" name="sMode" value="sched" ${!s.asNeeded ? 'checked' : ''}><span>Scheduled</span></label>
+      <label class="chip"><input type="radio" name="sMode" value="asneeded" ${s.asNeeded ? 'checked' : ''}><span>As needed only</span></label></div></div>
+    ${s.asNeeded ? '<p class="hint">Log doses from Take as needed on the Supplements tab whenever you take it.</p>' : `<div class="fld"><span>When</span><div class="chips">${TIMES.map(t => `<label class="chip"><input type="checkbox" name="sTime" value="${t}" ${s.times.includes(t) ? 'checked' : ''}><span>${t}</span></label>`).join('')}</div></div>
+    <div class="fld"><span>Days</span><div class="chips">${DOW.map((d, i) => `<label class="chip"><input type="checkbox" name="sDay" value="${i}" ${s.days.includes(i) ? 'checked' : ''}><span>${d}</span></label>`).join('')}</div></div>`}
     <div class="fld"><span>Nutrients per dose</span>
       <p class="hint" style="font-weight:400">Copy these from the label so they count toward daily totals. Leave empty for things you only want to check off, like creatine.</p>
       <div id="nutRows">${s.nuts.map((n, i) => `<div class="nutrow">
@@ -557,8 +571,11 @@ function suppForm(){
 function syncSuppForm(){
   const s = ui.editSupp; if(!s || !$('#sName')) return;
   s.name = $('#sName').value; s.dose = $('#sDose').value; s.notes = $('#sNotes').value; s.active = $('#sActive').checked;
-  s.times = [...document.querySelectorAll('input[name=sTime]:checked')].map(x => x.value);
-  s.days = [...document.querySelectorAll('input[name=sDay]:checked')].map(x => +x.value);
+  const mode = document.querySelector('input[name=sMode]:checked'); if(mode) s.asNeeded = mode.value === 'asneeded';
+  if(document.querySelector('input[name=sTime]')){
+    s.times = [...document.querySelectorAll('input[name=sTime]:checked')].map(x => x.value);
+    s.days = [...document.querySelectorAll('input[name=sDay]:checked')].map(x => +x.value);
+  }
   s.nuts = [...document.querySelectorAll('#nutRows .nutrow')].map(r => {
     const k = r.querySelector('.nk').value; let u = r.querySelector('.nu').value;
     if(u === 'IU' && k !== 'vitd') u = NMAP[k].unit;
@@ -575,13 +592,28 @@ function renderSupps(){
     ${doseList(ui.date)}
   </section>
   <section class="card">
+    <h2>Take as needed</h2>
+    <p class="hint">Log a dose of any supplement without scheduling it. Each tap adds one dose to this day's totals.</p>
+    ${(() => {
+      const active = S.supplements.filter(x => x.active !== false).sort((a, b) => (b.asNeeded ? 1 : 0) - (a.asNeeded ? 1 : 0) || a.name.localeCompare(b.name));
+      if(!active.length) return '<p class="empty">Add a supplement below, then log doses here.</p>';
+      const d = S.days[ui.date] || {};
+      const cnt = id => (d.extra || []).filter(x => x.suppId === id).length;
+      const logged = (d.extra || []).slice().reverse();
+      return `<ul class="list">${active.map(x => `<li><div class="main"><div class="t">${esc(x.name)}${cnt(x.id) ? ` <span class="m">×${cnt(x.id)} today</span>` : ''}</div><div class="m">${esc(x.dose || '1 dose')}${x.asNeeded ? ' · as needed' : ' · also scheduled'}</div></div>
+        <button class="btn ghost" style="padding:8px 12px" data-action="logExtra" data-id="${x.id}" aria-label="Log a dose of ${esc(x.name)}">+ Dose</button></li>`).join('')}</ul>
+      ${logged.length ? `<h3 style="margin-top:14px">Logged</h3><ul class="list">${logged.map(x => { const sp = S.supplements.find(q => q.id === x.suppId); return `<li><div class="main"><div class="t">${esc(sp ? sp.name : 'Deleted supplement')}</div><div class="m">${new Date(x.t).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'})}</div></div>
+        <button class="icon" data-action="delExtra" data-id="${x.id}" aria-label="Remove dose">×</button></li>`; }).join('')}</ul>` : ''}`;
+    })()}
+  </section>
+  <section class="card">
     <h2>Your supplements</h2>
     ${list.length ? `<ul class="list">${list.map(s => {
       const nut = Object.entries(s.nutrients||{}).map(([k, v]) => `${NMAP[k] ? NMAP[k].label : k} ${fmtN(v, NMAP[k] && NMAP[k].unit)} ${NMAP[k] ? NMAP[k].unit : ''}`).join(', ');
       const days = s.days.length === 7 ? 'Daily' : s.days.map(i => DOW[i]).join(' ');
       return `<li><button class="pick" data-action="editSupp" data-id="${s.id}">
         <div class="t">${esc(s.name)}${s.active === false ? ' <span class="m">(paused)</span>' : ''}</div>
-        <div class="m">${esc(s.dose || '')}${s.dose ? ' · ' : ''}${s.times.join(', ')} · ${days}</div>
+        <div class="m">${esc(s.dose || '')}${s.dose ? ' · ' : ''}${s.asNeeded ? 'As needed' : `${s.times.join(', ')} · ${days}`}</div>
         ${nut ? `<div class="m">${esc(nut)}</div>` : ''}${s.notes ? `<div class="m">${esc(s.notes)}</div>` : ''}</button></li>`;
     }).join('')}</ul>` : '<p class="empty">No supplements yet. Add each one with its dose, schedule, and label nutrients.</p>'}
     <button class="btn wide" style="margin-top:10px" data-action="newSupp">Add supplement</button>
@@ -1055,10 +1087,12 @@ const A = {
   photoSupp: () => { syncSuppForm(); ocrTarget = 'supp'; $('#labelFile').click(); return false; },
   barcodePhoto: () => { $('#barcodeFile').click(); return false; },
   closeScan: () => { ocrRun++; hideOverlay(); return false; },
+  logExtra: el => { const sp = S.supplements.find(q => q.id === el.dataset.id); day(ui.date).extra.push({id:uid(), suppId:el.dataset.id, t:Date.now()}); save(); toast(`Logged ${sp ? sp.name : 'dose'}`); },
+  delExtra: el => { const d = day(ui.date); d.extra = d.extra.filter(x => x.id !== el.dataset.id); save(); },
   water: el => { day(ui.date).water.push({id:uid(), oz:+el.dataset.oz, t:Date.now()}); save(); },
   waterCustom: () => { const oz = Number($('#wCustom').value); if(!(oz > 0)){ toast('Enter ounces greater than zero.'); return false; } day(ui.date).water.push({id:uid(), oz, t:Date.now()}); save(); },
   delWater: el => { const d = day(ui.date); d.water = d.water.filter(w => w.id !== el.dataset.id); save(); },
-  newSupp: () => { ui.editSupp = {isNew:true, id:uid(), name:'', dose:'', times:['Morning'], days:[0,1,2,3,4,5,6], nuts:[], notes:'', active:true}; window.scrollTo(0, 0); },
+  newSupp: () => { ui.editSupp = {isNew:true, id:uid(), name:'', dose:'', times:['Morning'], days:[0,1,2,3,4,5,6], nuts:[], notes:'', active:true, asNeeded:false}; window.scrollTo(0, 0); },
   editSupp: el => { const s = S.supplements.find(x => x.id === el.dataset.id); if(s){ ui.editSupp = JSON.parse(JSON.stringify({...s, nuts:s.nuts || []})); window.scrollTo(0, 0); } },
   suppAddNut: () => { syncSuppForm(); ui.editSupp.nuts.push({k:'vitd', amt:'', u:'IU'}); },
   suppDelNut: el => { syncSuppForm(); ui.editSupp.nuts.splice(+el.dataset.i, 1); },
@@ -1067,12 +1101,12 @@ const A = {
   saveSupp: () => {
     syncSuppForm(); const s = ui.editSupp;
     if(!s.name.trim()){ toast('Give the supplement a name.'); return false; }
-    if(!s.times.length){ toast('Pick at least one time of day.'); return false; }
-    if(!s.days.length){ toast('Pick at least one day.'); return false; }
+    if(!s.asNeeded && !s.times.length){ toast('Pick at least one time of day, or choose As needed only.'); return false; }
+    if(!s.asNeeded && !s.days.length){ toast('Pick at least one day, or choose As needed only.'); return false; }
     const nutrients = {};
     s.nuts = s.nuts.filter(n => Number(n.amt) > 0);
     s.nuts.forEach(n => { const base = n.u === 'IU' ? Number(n.amt) / 40 : Number(n.amt); nutrients[n.k] = (nutrients[n.k] || 0) + base; });
-    const rec = {id:s.id, name:s.name.trim(), dose:s.dose.trim(), times:TIMES.filter(t => s.times.includes(t)), days:s.days.sort(), nuts:s.nuts, nutrients, notes:s.notes.trim(), active:s.active};
+    const rec = {id:s.id, name:s.name.trim(), dose:s.dose.trim(), times:TIMES.filter(t => s.times.includes(t)), days:s.days.sort(), nuts:s.nuts, nutrients, notes:s.notes.trim(), active:s.active, asNeeded:!!s.asNeeded};
     const i = S.supplements.findIndex(x => x.id === s.id);
     if(i >= 0) S.supplements[i] = rec; else S.supplements.push(rec);
     ui.editSupp = null; save(); toast('Supplement saved');
@@ -1084,11 +1118,11 @@ const A = {
   importJson: () => { $('#importFile').click(); return false; },
   exportCsv: () => {
     const cols = ['kcal','protein','fat','carbs','fiber', ...MICRO_KEYS];
-    const rows = [['date', ...cols.map(k => `${k}_${NMAP[k].unit}`), 'net_carbs_g', 'water_oz', 'doses_taken', 'doses_scheduled'].join(',')];
+    const rows = [['date', ...cols.map(k => `${k}_${NMAP[k].unit}`), 'net_carbs_g', 'water_oz', 'doses_taken', 'doses_scheduled', 'as_needed_doses'].join(',')];
     Object.keys(S.days).sort().forEach(k => {
       const t = totals(k); const sc = scheduled(k); const d = S.days[k];
       const taken = sc.filter(x => d.supps && d.supps[x.s.id + '|' + x.time]).length;
-      rows.push([k, ...cols.map(c => r1(t[c])), r1(Math.max(0, t.carbs - t.fiber)), r1(t.water), taken, sc.length].join(','));
+      rows.push([k, ...cols.map(c => r1(t[c])), r1(Math.max(0, t.carbs - t.fiber)), r1(t.water), taken, sc.length, (d.extra || []).length].join(','));
     });
     download(`fuel-log-daily-${dkey(new Date())}.csv`, rows.join('\n'), 'text/csv'); return false;
   },
@@ -1127,6 +1161,7 @@ document.addEventListener('change', e => {
     ui.sel.qty = u.label === 'grams' ? 100 : u.label === 'ounces' ? 4 : 1;
     $('#qty').value = ui.sel.qty; $('#preview').innerHTML = previewHTML(); return;
   }
+  if(t.name === 'sMode'){ render(); return; }
   if(t.classList.contains('nk')){ syncSuppForm(); const i = [...document.querySelectorAll('#nutRows .nk')].indexOf(t); ui.editSupp.nuts[i].u = NMAP[t.value].unit; render(); return; }
   if(t.dataset.path){
     const parts = t.dataset.path.split('.'); const last = parts.pop();
